@@ -145,14 +145,14 @@ export default function SalesPage() {
   return (
     <DashboardLayout>
       <div className="space-y-4">
-        <div>
+        <div className="min-w-0">
           <Title level={4} className="!mb-1 !font-bold !text-slate-800">
             Sales (POS)
           </Title>
-          <Text type="secondary">Search or select a product, set quantity, add to cart, then checkout</Text>
+          <Text type="secondary" className="block text-sm sm:text-base">Search or select a product, set quantity, add to cart, then checkout</Text>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr,400px]">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-[1fr,minmax(280px,400px)] min-w-0">
           {/* Add product: search or select */}
           <Card className="shadow-sm" title="Add product">
             <p className="mb-4 text-sm text-slate-500">
@@ -204,7 +204,7 @@ export default function SalesPage() {
                 onClick={addToCart}
                 disabled={!selectedProduct}
                 size="large"
-                className="!bg-teal-600 hover:!bg-teal-700"
+                className="!bg-teal-600 hover:!bg-teal-700 w-full sm:w-auto"
               >
                 Add to cart
               </Button>
@@ -252,7 +252,7 @@ export default function SalesPage() {
                     {cart.map((line) => (
                       <div
                         key={line.id}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/50 p-2"
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/50 p-2"
                       >
                         <div className="min-w-0 flex-1">
                           <Text strong className="block truncate text-slate-800">
@@ -262,23 +262,25 @@ export default function SalesPage() {
                             GHS {line.price.toFixed(2)} × {line.quantity}
                           </Text>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<MinusOutlined />}
-                            onClick={() => updateCartQuantity(line.id, -1)}
-                          />
-                          <span className="min-w-[24px] text-center text-sm font-semibold">
-                            {line.quantity}
-                          </span>
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<PlusOutlined />}
-                            onClick={() => updateCartQuantity(line.id, 1)}
-                          />
-                          <Text strong className="w-16 text-right text-emerald-600">
+                        <div className="flex items-center justify-between sm:justify-end gap-1 flex-wrap">
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<MinusOutlined />}
+                              onClick={() => updateCartQuantity(line.id, -1)}
+                            />
+                            <span className="min-w-[24px] text-center text-sm font-semibold">
+                              {line.quantity}
+                            </span>
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<PlusOutlined />}
+                              onClick={() => updateCartQuantity(line.id, 1)}
+                            />
+                          </div>
+                          <Text strong className="text-emerald-600 sm:w-16 sm:text-right">
                             GHS {(line.price * line.quantity).toFixed(2)}
                           </Text>
                           <Button
@@ -328,6 +330,7 @@ export default function SalesPage() {
         onCancel={closeCheckout}
         footer={null}
         width={420}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
       >
         <div className="space-y-4 py-2">
@@ -409,6 +412,7 @@ export default function SalesPage() {
         onCancel={handleCloseReceipt}
         footer={null}
         width={400}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
         className="receipt-modal"
       >

@@ -55,7 +55,8 @@
 }
 
 html {
-  font-size: 17px;
+  font-size: clamp(15px, 2.5vw, 17px);
+  overflow-x: hidden;
 }
 
 body {
@@ -65,6 +66,8 @@ body {
   font-size: 1rem;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Products table toolbar: consistent search + filter styling */
@@ -181,3 +184,50 @@ body {
 .animate-loader-line {
   animation: loader-line 1.2s ease-in-out infinite;
 }
+
+/* Responsive: Ant Design modals fit viewport on mobile */
+@media (max-width: 575px) {
+  .ant-modal-wrap {
+    padding: 8px !important;
+    align-items: flex-start !important;
+    padding-top: env(safe-area-inset-top, 8px) !important;
+  }
+  .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    top: 0 !important;
+    margin: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  .ant-modal-content {
+    max-height: calc(100dvh - 32px) !important;
+    overflow-y: auto;
+  }
+  .ant-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Ensure tables scroll horizontally on small screens */
+.ant-table-body {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area padding for bottom of main content (notched devices) */
+.safe-area-bottom {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Login page: respect safe areas on notched devices */
+.login-safe-area {
+  padding-top: calc(3rem + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 640px) {
+  .login-safe-area {
+    padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+

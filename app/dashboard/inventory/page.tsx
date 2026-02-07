@@ -278,7 +278,7 @@ export default function InventoryPage() {
             <Title level={4} className="!mb-1 !font-bold !text-slate-800">Inventory</Title>
             <Text type="secondary">Add new products and track stock; they appear in Products and POS</Text>
           </div>
-          <Space size="middle">
+          <Space size="middle" wrap>
             <Button
               size="large"
               icon={<UploadOutlined />}
@@ -352,6 +352,7 @@ export default function InventoryPage() {
         okText={editingItem ? 'Update' : 'Add product'}
         cancelText="Cancel"
         width={520}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
         okButtonProps={{ className: '!bg-teal-600 !border-teal-600 hover:!bg-teal-700' }}
       >
@@ -384,7 +385,7 @@ export default function InventoryPage() {
             <TextArea rows={3} placeholder="Optional product description" />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item
               name="price"
               label="Selling price (GHS)"
@@ -421,7 +422,7 @@ export default function InventoryPage() {
             />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item name="quantity" label="Stock quantity" rules={[{ required: true, message: 'Required' }]}>
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
@@ -442,6 +443,7 @@ export default function InventoryPage() {
         onCancel={() => setImportOpen(false)}
         footer={null}
         width={480}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
       >
         <div className="py-2">
