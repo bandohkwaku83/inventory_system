@@ -1,26 +1,183 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Primary Colors */
+  --color-primary: #14b8a6;
+  --color-primary-light: #5eead4;
+  --color-primary-dark: #0d9488;
+  --color-secondary: #ec4899;
+  --color-secondary-light: #f472b6;
+  --color-secondary-dark: #db2777;
+  
+  /* Status Colors */
+  --color-success: #10b981;
+  --color-success-light: #34d399;
+  --color-success-dark: #059669;
+  --color-warning: #f59e0b;
+  --color-warning-light: #fbbf24;
+  --color-warning-dark: #d97706;
+  --color-error: #ef4444;
+  --color-error-light: #f87171;
+  --color-error-dark: #dc2626;
+  
+  /* Background Colors */
+  --color-background: #f8fafc;
+  --color-paper: #ffffff;
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #64748b;
+  --color-divider: #e2e8f0;
+  
+  /* Typography */
+  --font-sans: var(--font-lato), Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: 'Roboto Mono', monospace;
+  
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  font-size: 17px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-lato), Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  margin: 0;
+  padding: 0;
+}
+
+/* Products table toolbar: consistent search + filter styling */
+.products-table-toolbar .ant-input-affix-wrapper,
+.products-table-toolbar .ant-select-selector {
+  border-color: #e2e8f0 !important;
+  border-radius: 8px !important;
+}
+.products-table-toolbar .ant-input-affix-wrapper:hover,
+.products-table-toolbar .ant-select:hover .ant-select-selector {
+  border-color: #94a3b8 !important;
+}
+.products-table-toolbar .ant-input-affix-wrapper-focused,
+.products-table-toolbar .ant-input-affix-wrapper:focus-within,
+.products-table-toolbar .ant-select-focused .ant-select-selector {
+  border-color: #14b8a6 !important;
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15) !important;
+}
+
+.inventory-table-toolbar .ant-input-affix-wrapper,
+.inventory-table-toolbar .ant-select-selector {
+  border-color: #e2e8f0 !important;
+  border-radius: 8px !important;
+}
+.inventory-table-toolbar .ant-input-affix-wrapper:hover,
+.inventory-table-toolbar .ant-select:hover .ant-select-selector {
+  border-color: #94a3b8 !important;
+}
+.inventory-table-toolbar .ant-input-affix-wrapper-focused,
+.inventory-table-toolbar .ant-input-affix-wrapper:focus-within,
+.inventory-table-toolbar .ant-select-focused .ant-select-selector {
+  border-color: #14b8a6 !important;
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15) !important;
+}
+
+.purchases-table-toolbar .ant-input-affix-wrapper {
+  border-color: #e2e8f0 !important;
+  border-radius: 8px !important;
+}
+.purchases-table-toolbar .ant-input-affix-wrapper:hover {
+  border-color: #94a3b8 !important;
+}
+.purchases-table-toolbar .ant-input-affix-wrapper-focused,
+.purchases-table-toolbar .ant-input-affix-wrapper:focus-within {
+  border-color: #14b8a6 !important;
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15) !important;
+}
+
+.receipts-table-toolbar .ant-input-affix-wrapper {
+  border-color: #e2e8f0 !important;
+  border-radius: 8px !important;
+}
+.receipts-table-toolbar .ant-input-affix-wrapper:hover {
+  border-color: #94a3b8 !important;
+}
+.receipts-table-toolbar .ant-input-affix-wrapper-focused,
+.receipts-table-toolbar .ant-input-affix-wrapper:focus-within {
+  border-color: #14b8a6 !important;
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15) !important;
+}
+
+/* POS: print only the receipt content */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .receipt-print-area,
+  .receipt-print-area * {
+    visibility: visible;
+  }
+  .receipt-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    padding: 16px;
+    box-shadow: none;
+    border: none;
+  }
+  .no-print,
+  .no-print *,
+  .ant-modal-mask,
+  .ant-modal-wrap {
+    visibility: hidden !important;
+    display: none !important;
+  }
+}
+
+/* Loading screen – dot pulse */
+@keyframes loader-dot {
+  0%, 80%, 100% {
+    transform: scale(0.75);
+    opacity: 0.6;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-loader-dot {
+  animation: loader-dot 0.8s ease-in-out infinite;
+}
+
+/* Loading screen – bottom line sweep */
+@keyframes loader-line {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.animate-loader-line {
+  animation: loader-line 1.2s ease-in-out infinite;
 }
