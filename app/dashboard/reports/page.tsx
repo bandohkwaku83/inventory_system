@@ -35,6 +35,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+type RangeValue = React.ComponentProps<typeof RangePicker>['value'];
 
 const reportTypes = [
   { value: 'daily', label: 'Daily Sales' },
@@ -145,7 +146,7 @@ const salesDataColumns: TableProps<DailySalesData | MonthlySalesData>['columns']
 
 export default function ReportsPage() {
   const [reportType, setReportType] = useState<string>('daily');
-  const [dateRange, setDateRange] = useState<null | [unknown, unknown]>(null);
+  const [dateRange, setDateRange] = useState<RangeValue>(null);
 
   const handleExport = (format: 'pdf' | 'excel') => {
     const label = reportTypes.find((r) => r.value === reportType)?.label ?? reportType;
@@ -283,7 +284,7 @@ export default function ReportsPage() {
                   tick={{ fontSize: 12, fill: '#64748b' }}
                   axisLine={false}
                   tickLine={false}
-                  tickFormatter={(v) => (v >= 1000 ? `${v / 1000}k` : String(v))}
+                  tickFormatter={(v: number) => (v >= 1000 ? `${v / 1000}k` : String(v))}
                 />
                 <Tooltip
                   contentStyle={{
@@ -324,7 +325,7 @@ export default function ReportsPage() {
                   tick={{ fontSize: 12, fill: '#64748b' }}
                   axisLine={false}
                   tickLine={false}
-                  tickFormatter={(v) => (v >= 1000 ? `GHS ${(v / 1000).toFixed(0)}k` : `GHS ${v}`)}
+                  tickFormatter={(v: number) => (v >= 1000 ? `GHS ${(v / 1000).toFixed(0)}k` : `GHS ${v}`)}
                 />
                 <Tooltip
                   contentStyle={{
