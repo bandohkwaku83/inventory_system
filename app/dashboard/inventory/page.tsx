@@ -14,6 +14,8 @@ import {
   InputNumber,
   Typography,
   Tooltip,
+  Upload,
+  message,
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
@@ -22,7 +24,9 @@ import {
   DeleteOutlined,
   SearchOutlined,
   InboxOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
+import type { UploadProps } from 'antd';
 import DashboardLayout from '../../components/DashboardLayout';
 import ImageUpload from '../../components/ImageUpload';
 import { useProducts, getStockStatus, type Product } from '../../context/ProductsContext';
@@ -36,6 +40,7 @@ export default function InventoryPage() {
   const [editingItem, setEditingItem] = useState<Product | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [form] = Form.useForm();
 
   const filteredItems = useMemo(() => {
@@ -120,6 +125,69 @@ export default function InventoryPage() {
       cancelText: 'Cancel',
       onOk: () => deleteProduct(id),
     });
+  };
+
+  const parseCSV = (text: string): Record<string, string>[] => {
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+    const rows: Record<string, string>[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map((v) => v.trim());
+      const row: Record<string, string> = {};
+      headers.forEach((h, j) => { row[h] = values[j] ?? ''; });
+      rows.push(row);
+    }
+    return rows;
+  };
+
+  const handleImportFile: UploadProps['customRequest'] = (options) => {
+    const file = options.file as File;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = reader.result as string;
+        const rows = parseCSV(text);
+        const required = ['name', 'category', 'unit', 'quantity', 'reorderlevel', 'price', 'costprice'];
+        const first = rows[0] ?? {};
+        const keys = Object.keys(first);
+        const hasHeaders = rows.length > 0 && required.every((k) => keys.some((x) => x.toLowerCase() === k));
+        const norm = (r: Record<string, string>, key: string) => {
+          const k = Object.keys(r).find((x) => x.toLowerCase() === key.toLowerCase());
+          return k ? (r[k] ?? '').trim() : '';
+        };
+        let added = 0;
+        for (const r of rows) {
+          const name = norm(r, 'name');
+          if (!name) continue;
+          const quantity = parseInt(norm(r, 'quantity'), 10) || 0;
+          const reorderLevel = parseInt(norm(r, 'reorderlevel'), 10) || 0;
+          const price = parseFloat(norm(r, 'price')) || 0;
+          const costPrice = parseFloat(norm(r, 'costprice')) || 0;
+          const unit = norm(r, 'unit') || 'units';
+          const category = norm(r, 'category') || 'Groceries';
+          const sku = norm(r, 'sku');
+          addProduct({
+            name,
+            category,
+            unit,
+            quantity,
+            reorderLevel,
+            price,
+            costPrice,
+            sku: sku || undefined,
+            image: null,
+          });
+          added++;
+        }
+        message.success(`Imported ${added} product(s).`);
+        setImportOpen(false);
+      } catch (e) {
+        message.error('Failed to parse CSV. Use columns: name, category, unit, quantity, reorderLevel, price, costPrice, sku');
+      }
+      options.onSuccess?.(undefined);
+    };
+    reader.readAsText(file);
   };
 
   const columns: TableProps<Product>['columns'] = [
@@ -210,15 +278,25 @@ export default function InventoryPage() {
             <Title level={4} className="!mb-1 !font-bold !text-slate-800">Inventory</Title>
             <Text type="secondary">Add new products and track stock; they appear in Products and POS</Text>
           </div>
-          <Button
-            type="primary"
-            size="large"
-            icon={<PlusOutlined />}
-            onClick={() => handleOpen()}
-            className="!bg-teal-600 !border-teal-600 hover:!bg-teal-700 hover:!border-teal-700"
-          >
-            Add product / stock item
-          </Button>
+          <Space size="middle">
+            <Button
+              size="large"
+              icon={<UploadOutlined />}
+              onClick={() => setImportOpen(true)}
+              className="!border-teal-600 !text-teal-600 hover:!border-teal-700 hover:!text-teal-700"
+            >
+              Import
+            </Button>
+            <Button
+              type="primary"
+              size="large"
+              icon={<PlusOutlined />}
+              onClick={() => handleOpen()}
+              className="!bg-teal-600 !border-teal-600 hover:!bg-teal-700 hover:!border-teal-700"
+            >
+              Add product / stock item
+            </Button>
+          </Space>
         </div>
 
         <Card className="shadow-sm" styles={{ body: { padding: 0 } }}>
@@ -356,6 +434,33 @@ export default function InventoryPage() {
             <Input placeholder="e.g. MLK-001" size="large" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Import products"
+        open={importOpen}
+        onCancel={() => setImportOpen(false)}
+        footer={null}
+        width={480}
+        destroyOnClose
+      >
+        <div className="py-2">
+          <Text type="secondary" className="block mb-4">
+            Upload a CSV with columns: <strong>name</strong>, <strong>category</strong>, <strong>unit</strong>, <strong>quantity</strong>, <strong>reorderLevel</strong>, <strong>price</strong>, <strong>costPrice</strong>, <strong>sku</strong> (optional). First row should be headers.
+          </Text>
+          <Upload.Dragger
+            accept=".csv"
+            maxCount={1}
+            showUploadList={false}
+            customRequest={handleImportFile}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined className="text-4xl text-teal-500" />
+            </p>
+            <p className="ant-upload-text">Click or drag a CSV file here</p>
+            <p className="ant-upload-hint">One product per row after the header</p>
+          </Upload.Dragger>
+        </div>
       </Modal>
     </DashboardLayout>
   );
