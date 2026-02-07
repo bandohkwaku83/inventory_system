@@ -118,7 +118,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   );
 
   return (
-    <div className="flex min-h-screen min-w-0">
+    <div className="flex min-h-viewport min-w-0">
       {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <div
@@ -129,7 +129,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Sidebar - sticky on desktop so it stays visible when scrolling */}
       <aside
-        className={`fixed md:sticky md:top-0 md:h-screen md:self-start inset-y-0 left-0 z-50 w-[260px] max-w-[85vw] sm:max-w-none flex-shrink-0 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed md:sticky md:top-0 md:h-viewport md:self-start inset-y-0 left-0 z-50 w-[260px] max-w-[85vw] sm:max-w-none flex-shrink-0 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -148,9 +148,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             >
               <MenuIcon className="text-slate-700" />
             </button>
-            <h2 className="flex-shrink-0 text-sm sm:text-base font-bold text-slate-800 truncate max-w-[140px] sm:max-w-none sm:mr-4">
-              Inventory System
-            </h2>
             <div className="relative flex-1 min-w-0 max-w-[200px] sm:max-w-[280px] lg:max-w-[400px] hidden sm:block">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
                 <SearchIcon className="text-base" />
@@ -214,8 +211,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </header>
 
+        {/* Spacer so fixed header doesn't cover page title – header height + gap */}
+        <div className="h-16 flex-none bg-slate-50 sm:h-20" aria-hidden="true" />
         {/* Main Content Area */}
-        <main className="flex-1 p-3 sm:p-6 md:p-8 pt-14 sm:pt-16 pb-8 bg-slate-50 min-h-[calc(100vh-3.5rem)] sm:min-h-[calc(100vh-64px)] min-w-0 overflow-x-hidden safe-area-bottom">
+        <main className="flex-1 p-3 sm:p-6 md:p-8 pb-8 bg-slate-50 min-h-viewport-minus-header min-w-0 overflow-x-hidden overflow-y-visible safe-area-bottom">
           {children}
         </main>
       </div>

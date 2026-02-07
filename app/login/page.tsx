@@ -26,7 +26,7 @@ export default function LoginPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 sm:flex sm:items-center sm:justify-center login-safe-area">
+    <div className="min-h-viewport min-h-screen bg-slate-50 px-4 sm:flex sm:items-center sm:justify-center login-safe-area">
       <div className="mx-auto w-full max-w-[400px]">
         {/* Card */}
         <div className="overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/60">
