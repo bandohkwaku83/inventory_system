@@ -228,9 +228,9 @@ export default function DashboardPage() {
   return (
     <DashboardLayout>
       <div>
-        {/* Header */}
+        {/* Page title – kept visible below app bar via layout padding */}
         <div className="mb-4 sm:mb-6 md:mb-8">
-          <h1 className="mb-1 text-lg sm:text-xl font-bold text-slate-800">
+          <h1 className="mb-1 text-xl sm:text-2xl font-bold text-slate-800 leading-tight">
             {isAdmin ? 'Dashboard Overview' : 'Sales Overview'}
           </h1>
           <p className="text-xs text-slate-500">

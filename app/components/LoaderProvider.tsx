@@ -22,7 +22,7 @@ export default function LoaderProvider({ children }: LoaderProviderProps) {
     <>
       <Loader isLoading={isLoading} />
       <div
-        className={`min-h-screen transition-opacity duration-500 ease-out ${
+        className={`min-h-viewport min-h-screen transition-opacity duration-500 ease-out ${
           isLoading ? 'opacity-0' : 'opacity-100'
         }`}
       >
