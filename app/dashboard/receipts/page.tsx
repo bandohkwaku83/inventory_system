@@ -258,6 +258,7 @@ export default function ReceiptsPage() {
         onCancel={() => setViewOpen(false)}
         footer={null}
         width={400}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
         className="receipt-print-modal"
       >

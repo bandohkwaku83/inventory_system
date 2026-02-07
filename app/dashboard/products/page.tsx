@@ -299,6 +299,7 @@ export default function ProductsPage() {
         okText="Update"
         cancelText="Cancel"
         width={520}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
         okButtonProps={{
           className: '!bg-teal-600 !border-teal-600 hover:!bg-teal-700',
@@ -338,7 +339,7 @@ export default function ProductsPage() {
             <TextArea rows={3} placeholder="Optional product description" />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item
               name="price"
               label="Selling price (GHS)"
@@ -382,7 +383,7 @@ export default function ProductsPage() {
             />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item name="quantity" label="Stock quantity" rules={[{ required: true, message: 'Required' }]}>
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>

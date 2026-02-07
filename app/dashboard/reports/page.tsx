@@ -170,12 +170,12 @@ export default function ReportsPage() {
         {/* Toolbar: report type + date range + export */}
         <Card className="shadow-sm" styles={{ body: { padding: '1rem 1.25rem' } }}>
           <div className="reports-toolbar flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
               <Select
                 value={reportType}
                 onChange={setReportType}
                 options={reportTypes}
-                className="!w-[180px]"
+                className="!w-full sm:!w-[180px] min-w-0"
                 size="large"
                 suffixIcon={reportType === 'top' ? <BarChartOutlined /> : <LineChartOutlined />}
               />
@@ -187,7 +187,7 @@ export default function ReportsPage() {
                 placeholder={['Start date', 'End date']}
               />
             </div>
-            <Space size="middle">
+            <Space size="middle" wrap className="w-full sm:w-auto">
               <Button
                 icon={<FilePdfOutlined />}
                 size="large"
@@ -372,6 +372,7 @@ export default function ReportsPage() {
                 rowKey="name"
                 pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} items` }}
                 size="middle"
+                scroll={{ x: 400 }}
               />
             ) : (
               <Table<DailySalesData | MonthlySalesData>
@@ -380,6 +381,7 @@ export default function ReportsPage() {
                 rowKey={reportType === 'monthly' ? 'month' : 'date'}
                 pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} rows` }}
                 size="middle"
+                scroll={{ x: 400 }}
               />
             )}
           </div>

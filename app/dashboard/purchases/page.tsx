@@ -288,6 +288,7 @@ export default function PurchasesPage() {
         okText="Save purchase"
         cancelText="Cancel"
         width={640}
+        style={{ maxWidth: '95vw' }}
         destroyOnClose
         okButtonProps={{
           disabled: formData.items.length === 0,
@@ -370,13 +371,16 @@ export default function PurchasesPage() {
 
             {formData.items.length > 0 ? (
               <>
-                <Table<PurchaseItem>
-                  columns={lineItemColumns}
-                  dataSource={formData.items}
-                  rowKey={(_, i) => String(i)}
-                  pagination={false}
-                  size="small"
-                />
+                <div className="overflow-x-auto -mx-1">
+                  <Table<PurchaseItem>
+                    columns={lineItemColumns}
+                    dataSource={formData.items}
+                    rowKey={(_, i) => String(i)}
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: 500 }}
+                  />
+                </div>
                 <div className="mt-4 flex justify-end border-t border-slate-200 pt-4">
                   <Text strong className="text-base">
                     Total: <span className="text-teal-600">GHS {totalModal.toFixed(2)}</span>

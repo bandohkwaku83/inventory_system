@@ -118,7 +118,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen min-w-0">
       {/* Mobile Drawer Overlay */}
       {mobileOpen && (
         <div
@@ -129,7 +129,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Sidebar - sticky on desktop so it stays visible when scrolling */}
       <aside
-        className={`fixed md:sticky md:top-0 md:h-screen md:self-start inset-y-0 left-0 z-50 w-[260px] flex-shrink-0 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed md:sticky md:top-0 md:h-screen md:self-start inset-y-0 left-0 z-50 w-[260px] max-w-[85vw] sm:max-w-none flex-shrink-0 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -137,31 +137,31 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col md:ml-0">
+      <div className="flex-1 flex flex-col min-w-0 md:ml-0">
         {/* Top App Bar */}
         <header className="fixed top-0 right-0 left-0 md:left-[260px] z-30 bg-white text-slate-800 shadow-sm border-b border-slate-200">
-          <div className="px-4 sm:px-6 h-16 flex items-center gap-4">
+          <div className="px-3 sm:px-6 h-14 sm:h-16 flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               onClick={handleDrawerToggle}
-              className="md:hidden p-2 hover:bg-teal-50 rounded-lg transition-colors"
+              className="md:hidden p-2 -ml-1 hover:bg-teal-50 rounded-lg transition-colors touch-manipulation"
               aria-label="open drawer"
             >
               <MenuIcon className="text-slate-700" />
             </button>
-            <h2 className="flex-shrink-0 mr-4 font-bold text-slate-800 whitespace-nowrap">
+            <h2 className="flex-shrink-0 text-sm sm:text-base font-bold text-slate-800 truncate max-w-[140px] sm:max-w-none sm:mr-4">
               Inventory System
             </h2>
-            <div className="relative flex-1 min-w-0 max-w-[400px]">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+            <div className="relative flex-1 min-w-0 max-w-[200px] sm:max-w-[280px] lg:max-w-[400px] hidden sm:block">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
                 <SearchIcon className="text-base" />
               </div>
               <input
                 type="text"
                 placeholder="Search..."
-                className="w-full py-2.5 pl-12 pr-3 text-sm rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-100 outline-none transition-all"
+                className="w-full py-2 pl-9 pr-2 sm:py-2.5 sm:pl-12 sm:pr-3 text-sm rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-100 outline-none transition-all"
               />
             </div>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
               <button className="p-2 hover:bg-teal-50 rounded-lg transition-colors relative" aria-label="Notifications">
                 <NotificationsIcon className="text-slate-700" />
                 <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
@@ -215,7 +215,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 mt-16 bg-slate-50 min-h-[calc(100vh-64px)]">
+        <main className="flex-1 p-3 sm:p-6 md:p-8 pt-14 sm:pt-16 pb-8 bg-slate-50 min-h-[calc(100vh-3.5rem)] sm:min-h-[calc(100vh-64px)] min-w-0 overflow-x-hidden safe-area-bottom">
           {children}
         </main>
       </div>

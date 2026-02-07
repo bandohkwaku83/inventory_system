@@ -229,8 +229,8 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div>
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="mb-1 text-xl font-bold text-slate-800">
+        <div className="mb-4 sm:mb-6 md:mb-8">
+          <h1 className="mb-1 text-lg sm:text-xl font-bold text-slate-800">
             {isAdmin ? 'Dashboard Overview' : 'Sales Overview'}
           </h1>
           <p className="text-xs text-slate-500">
@@ -241,7 +241,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
           {metricsData.map((metric, index) => {
             const IconComponent = metric.icon;
             const isReceiptsLink = !isAdmin && metric.title === 'Receipts';
@@ -349,7 +349,7 @@ export default function DashboardPage() {
         )}
 
         {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mb-4 sm:mb-6">
           {/* Sales Chart */}
           <div className="lg:col-span-2">
             <div className="bg-white border border-slate-200 rounded-xl h-full shadow-sm">
@@ -492,13 +492,14 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-                <div className="p-3">
+                <div className="p-2 sm:p-3 overflow-x-auto">
                   <Table<RecentSale>
                     columns={recentSalesColumns}
                     dataSource={recentSales}
                     pagination={false}
                     size="small"
                     rowKey="id"
+                    scroll={{ x: 400 }}
                   />
                 </div>
               </div>
@@ -525,13 +526,14 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="p-3">
+                  <div className="p-2 sm:p-3 overflow-x-auto">
                     <Table<RecentRestock>
                       columns={recentRestocksColumns}
                       dataSource={recentRestocks}
                       pagination={false}
                       size="small"
                       rowKey={(record, index) => `${record.item}-${index}`}
+                      scroll={{ x: 400 }}
                     />
                   </div>
                 </div>

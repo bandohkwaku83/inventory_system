@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Lato } from "next/font/google";
 import "./globals.css";
 import ThemeRegistry from "./components/ThemeRegistry";
@@ -16,6 +16,12 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: "Inventory System",
   description: "Inventory management for shops and supermarkets",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
