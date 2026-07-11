@@ -4,9 +4,9 @@ export const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#14b8a6',
-      light: '#5eead4',
-      dark: '#0d9488',
+      main: '#25395c',
+      light: '#7a8fad',
+      dark: '#1a2842',
       contrastText: '#ffffff',
     },
     secondary: {
@@ -120,9 +120,9 @@ export const theme = createTheme({
           },
         },
         contained: {
-          background: '#14b8a6',
+          background: '#25395c',
           '&:hover': {
-            background: '#0d9488',
+            background: '#1a2842',
           },
         },
       },

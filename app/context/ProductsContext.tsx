@@ -1,21 +1,59 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { message } from 'antd';
+import { useActionLoader } from '../components/LoaderProvider';
+import {
+  apiUrl,
+  dataUrlToFile,
+  mapApiProduct,
+  productResourceUrl,
+  readApiError,
+  type ApiProduct,
+} from '../lib/productsApi';
 
 export type StockStatus = 'Good' | 'Low' | 'Out';
 
 export interface Product {
-  id: number;
+  id: string;
   name: string;
   category: string;
+  categoryId: string;
   price: number;
-  costPrice: number;
+  costPrice: number | null;
   unit: string;
   quantity: number;
   reorderLevel: number;
   lastRestocked: string;
   sku?: string;
+  description?: string;
   image?: string | null;
+}
+
+export type ProductInput = {
+  name: string;
+  categoryId: string;
+  description?: string;
+  price: number;
+  costPrice: number | null;
+  /** Omit on create when empty; use `null` on update to clear. */
+  sku?: string | null;
+  unit: string;
+  quantity: number;
+  reorderLevel: number;
+  image?: string | null;
+};
+
+export interface CategoryOption {
+  id: string;
+  name: string;
 }
 
 export function getStockStatus(quantity: number, reorderLevel: number): StockStatus {
@@ -24,118 +62,217 @@ export function getStockStatus(quantity: number, reorderLevel: number): StockSta
   return 'Good';
 }
 
-const UNITS = ['units', 'kg', 'L', 'pack', 'boxes', 'pieces'];
-const CATEGORIES = ['Groceries', 'Beverages', 'Dairy', 'Snacks', 'Household', 'Personal Care'];
-
-const STORAGE_KEY = 'inventory_system_products';
-
-const seedProducts: Product[] = [
-  { id: 1, name: 'Milk 1L', category: 'Dairy', price: 7, costPrice: 5, unit: 'units', quantity: 30, reorderLevel: 20, lastRestocked: '2024-01-14', sku: 'MLK-001', image: null },
-  { id: 2, name: 'Bread (Loaf)', category: 'Groceries', price: 5, costPrice: 3, unit: 'units', quantity: 15, reorderLevel: 20, lastRestocked: '2024-01-14', sku: 'BRD-002', image: null },
-  { id: 3, name: 'Rice 2kg', category: 'Groceries', price: 15, costPrice: 10, unit: 'units', quantity: 150, reorderLevel: 50, lastRestocked: '2024-01-15', sku: 'RCE-003', image: null },
-  { id: 4, name: 'Cooking Oil 1L', category: 'Groceries', price: 14, costPrice: 9, unit: 'units', quantity: 25, reorderLevel: 10, lastRestocked: '2024-01-14', sku: 'OIL-004', image: null },
-  { id: 5, name: 'Soft Drinks 500ml', category: 'Beverages', price: 5, costPrice: 2.5, unit: 'units', quantity: 0, reorderLevel: 50, lastRestocked: '2024-01-10', sku: 'DRK-005', image: null },
-  { id: 6, name: 'Snacks (Pack)', category: 'Snacks', price: 3.5, costPrice: 2, unit: 'units', quantity: 8, reorderLevel: 10, lastRestocked: '2024-01-13', image: null },
-  { id: 7, name: 'Eggs (Tray)', category: 'Groceries', price: 18, costPrice: 12, unit: 'units', quantity: 20, reorderLevel: 5, lastRestocked: '2024-01-14', image: null },
-  { id: 8, name: 'Tomatoes 1kg', category: 'Groceries', price: 8, costPrice: 4, unit: 'kg', quantity: 12, reorderLevel: 5, lastRestocked: '2024-01-13', image: null },
-];
-
-function loadProducts(): Product[] {
-  if (typeof window === 'undefined') return seedProducts;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedProducts;
-    const parsed = JSON.parse(raw) as Product[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : seedProducts;
-  } catch {
-    return seedProducts;
-  }
-}
-
-function saveProducts(products: Product[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
-  } catch (_) {}
-}
+const DEFAULT_UNITS = ['units', 'kg', 'g', 'liters', 'ml', 'box', 'pack', 'dozen'];
 
 interface ProductsContextValue {
   products: Product[];
-  addProduct: (p: Omit<Product, 'id' | 'lastRestocked'>) => void;
-  updateProduct: (id: number, updates: Partial<Product>) => void;
-  deleteProduct: (id: number) => void;
-  deductQuantities: (items: { id: number; quantity: number }[]) => void;
-  getNextId: () => number;
+  productsLoading: boolean;
+  refreshProducts: () => Promise<void>;
+  addProduct: (input: ProductInput) => Promise<void>;
+  updateProduct: (id: string, updates: Partial<ProductInput>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  deductQuantities: (items: { id: string; quantity: number }[]) => Promise<void>;
   units: string[];
   categories: string[];
+  categoryOptions: CategoryOption[];
+  /** Products visible to current user based on category permissions. */
+  visibleProducts: Product[];
 }
 
 const ProductsContext = createContext<ProductsContextValue | null>(null);
 
-export function ProductsProvider({ children }: { children: React.ReactNode }) {
+type ProductsProviderProps = {
+  children: React.ReactNode;
+  /** Extra categories from settings (local/API). */
+  extraCategories?: CategoryOption[];
+  /** Restrict POS/catalog to these category IDs (empty = all). */
+  allowedCategoryIds?: string[];
+};
+
+export function ProductsProvider({
+  children,
+  extraCategories = [],
+  allowedCategoryIds = [],
+}: ProductsProviderProps) {
+  const { runWithLoader } = useActionLoader();
   const [products, setProducts] = useState<Product[]>([]);
-  const [mounted, setMounted] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
 
-  useEffect(() => {
-    setProducts(loadProducts());
-    setMounted(true);
+  const refreshProducts = useCallback(async () => {
+    const res = await fetch(apiUrl('/api/products'));
+    if (!res.ok) {
+      throw new Error(await readApiError(res));
+    }
+    const data = (await res.json()) as unknown;
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid products response');
+    }
+    setProducts((data as ApiProduct[]).map(mapApiProduct));
+  }, []);
+
+  const fetchUnitsMeta = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/api/products/meta/units'));
+      if (!res.ok) return;
+      const d = (await res.json()) as { units?: string[] };
+      if (Array.isArray(d.units) && d.units.length > 0) {
+        setUnits(d.units);
+      }
+    } catch {
+      /* keep defaults */
+    }
   }, []);
 
   useEffect(() => {
-    if (!mounted || products.length === 0) return;
-    saveProducts(products);
-  }, [mounted, products]);
+    void (async () => {
+      setProductsLoading(true);
+      try {
+        await Promise.all([refreshProducts(), fetchUnitsMeta()]);
+      } catch (e) {
+        message.error(e instanceof Error ? e.message : 'Failed to load products');
+      } finally {
+        setProductsLoading(false);
+      }
+    })();
+  }, [refreshProducts, fetchUnitsMeta]);
 
-  const getNextId = useCallback(() => {
-    const max = products.length === 0 ? 0 : Math.max(...products.map((p) => p.id));
-    return max + 1;
-  }, [products]);
+  const categoryOptions = useMemo(() => {
+    const map = new Map<string, CategoryOption>();
+    for (const c of extraCategories) {
+      if (c.id) map.set(c.id, c);
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [extraCategories]);
 
-  const addProduct = useCallback((p: Omit<Product, 'id' | 'lastRestocked'>) => {
-    const today = new Date().toISOString().split('T')[0];
-    setProducts((prev) => {
-      const nextId = prev.length === 0 ? 1 : Math.max(...prev.map((x) => x.id)) + 1;
-      return [...prev, { ...p, id: nextId, lastRestocked: today }];
-    });
-  }, []);
+  const visibleProducts = useMemo(() => {
+    if (allowedCategoryIds.length === 0) return products;
+    const allowed = new Set(allowedCategoryIds);
+    return products.filter((p) => allowed.has(p.categoryId));
+  }, [products, allowedCategoryIds]);
 
-  const updateProduct = useCallback((id: number, updates: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const next = { ...item, ...updates };
-        if (updates.quantity !== undefined || updates.reorderLevel !== undefined) {
-          next.lastRestocked = new Date().toISOString().split('T')[0];
+  const categories = useMemo(() => {
+    const names = categoryOptions.map((c) => c.name).filter(Boolean);
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [categoryOptions]);
+
+  const addProduct = useCallback(
+    async (input: ProductInput) => {
+      return runWithLoader(async () => {
+        const formData = new FormData();
+        formData.append('name', input.name);
+        formData.append('categoryId', input.categoryId);
+        formData.append('sellingPrice', String(input.price));
+        formData.append('unit', input.unit);
+        formData.append('stockQuantity', String(input.quantity));
+        formData.append('reorderAt', String(input.reorderLevel));
+        if (input.sku?.trim()) formData.append('sku', input.sku.trim());
+        if (input.description?.trim()) formData.append('description', input.description.trim());
+        if (input.costPrice != null) formData.append('costPrice', String(input.costPrice));
+        if (input.image?.startsWith('data:')) {
+          const file = await dataUrlToFile(input.image, 'product.jpg');
+          formData.append('image', file);
         }
-        return next;
-      })
-    );
-  }, []);
+        const res = await fetch(apiUrl('/api/products'), { method: 'POST', body: formData });
+        if (!res.ok) {
+          const err = await readApiError(res);
+          message.error(err);
+          throw new Error(err);
+        }
+        await refreshProducts();
+      });
+    },
+    [refreshProducts, runWithLoader]
+  );
 
-  const deleteProduct = useCallback((id: number) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  const updateProduct = useCallback(
+    async (id: string, updates: Partial<ProductInput>) => {
+      return runWithLoader(async () => {
+        const patch: Record<string, unknown> = {};
+        if (updates.name !== undefined) patch.name = updates.name;
+        if (updates.price !== undefined) patch.sellingPrice = updates.price;
+        if (updates.costPrice !== undefined) patch.costPrice = updates.costPrice;
+        if (updates.quantity !== undefined) patch.stockQuantity = updates.quantity;
+        if (updates.reorderLevel !== undefined) patch.reorderAt = updates.reorderLevel;
+        if (updates.unit !== undefined) patch.unit = updates.unit;
+        if (updates.sku !== undefined) {
+          const s = updates.sku;
+          patch.sku = s == null || String(s).trim() === '' ? null : String(s).trim();
+        }
+        if (updates.description !== undefined) patch.description = updates.description;
+        if (updates.categoryId !== undefined) patch.categoryId = updates.categoryId;
+        const res = await fetch(productResourceUrl(id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) {
+          const err = await readApiError(res);
+          message.error(err);
+          throw new Error(err);
+        }
+        await refreshProducts();
+      });
+    },
+    [refreshProducts, runWithLoader]
+  );
 
-  const deductQuantities = useCallback((items: { id: number; quantity: number }[]) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        const sold = items.find((i) => i.id === p.id);
-        if (!sold) return p;
-        const newQty = Math.max(0, p.quantity - sold.quantity);
-        return { ...p, quantity: newQty };
-      })
-    );
-  }, []);
+  const deleteProduct = useCallback(
+    async (id: string) => {
+      return runWithLoader(async () => {
+        const res = await fetch(productResourceUrl(id), { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await readApiError(res);
+          message.error(err);
+          throw new Error(err);
+        }
+        await refreshProducts();
+      });
+    },
+    [refreshProducts, runWithLoader]
+  );
+
+  const deductQuantities = useCallback(
+    async (items: { id: string; quantity: number }[]) => {
+      return runWithLoader(async () => {
+        try {
+          await Promise.all(
+            items.map(async ({ id, quantity: soldQty }) => {
+              const p = products.find((x) => x.id === id);
+              if (!p) return;
+              const nextQty = Math.max(0, p.quantity - soldQty);
+              const res = await fetch(productResourceUrl(id), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stockQuantity: nextQty }),
+              });
+              if (!res.ok) {
+                throw new Error(await readApiError(res));
+              }
+            })
+          );
+          await refreshProducts();
+        } catch (e) {
+          message.error(e instanceof Error ? e.message : 'Could not update stock');
+          throw e;
+        }
+      });
+    },
+    [products, refreshProducts, runWithLoader]
+  );
 
   const value: ProductsContextValue = {
     products,
+    productsLoading,
+    refreshProducts,
     addProduct,
     updateProduct,
     deleteProduct,
     deductQuantities,
-    getNextId,
-    units: UNITS,
-    categories: CATEGORIES,
+    units,
+    categories,
+    categoryOptions,
+    visibleProducts,
   };
 
   return <ProductsContext.Provider value={value}>{children}</ProductsContext.Provider>;

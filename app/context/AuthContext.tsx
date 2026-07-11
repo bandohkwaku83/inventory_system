@@ -1,93 +1,123 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-
-export type Role = 'admin' | 'sales';
+import type { UserRole } from './UsersContext';
+import type { Permission } from '../lib/permissions';
+import {
+  clearStoredToken,
+  fetchMe,
+  getStoredToken,
+  loginApi,
+  type AuthUserResponse,
+} from '../lib/authApi';
 
 export interface User {
+  id: string;
   name: string;
-  role: Role;
+  email: string;
+  role: UserRole;
+  entitlements: Permission[];
+  categoryIds: string[];
+}
+
+function normalizeEntitlements(apiUser: AuthUserResponse): Permission[] {
+  const raw = apiUser.entitlements?.length
+    ? apiUser.entitlements
+    : (apiUser.role?.entitlements ?? []);
+  return raw.filter((value): value is Permission => typeof value === 'string');
+}
+
+function mapAuthUser(apiUser: AuthUserResponse): User {
+  return {
+    id: apiUser._id,
+    name: apiUser.name,
+    email: apiUser.email,
+    role: apiUser.role?.slug ?? apiUser.roleId,
+    entitlements: normalizeEntitlements(apiUser),
+    categoryIds: Array.isArray(apiUser.categoryIds) ? apiUser.categoryIds : [],
+  };
 }
 
 interface AuthContextValue {
   user: User | null;
-  login: (name: string, role: Role) => void;
+  isBootstrapping: boolean;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  isAdmin: boolean;
-  isSales: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STORAGE_KEY = 'inventory_system_user';
 
+function persistUser(nextUser: User): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearPersistedUser(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as User;
-        if (parsed?.name && (parsed.role === 'admin' || parsed.role === 'sales')) {
-          setUser(parsed);
-        }
+    void (async () => {
+      try {
+        if (!getStoredToken()) return;
+
+        const apiUser = await fetchMe();
+        const nextUser = mapAuthUser(apiUser);
+        setUser(nextUser);
+        persistUser(nextUser);
+      } catch {
+        clearStoredToken();
+        clearPersistedUser();
+        setUser(null);
+      } finally {
+        setIsBootstrapping(false);
       }
-    } catch {
-      // ignore invalid stored data
-    }
-    setMounted(true);
+    })();
   }, []);
 
-  const login = useCallback((name: string, role: Role) => {
-    const u = { name: name.trim() || 'User', role };
-    setUser(u);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
-    } catch {
-      // ignore
+  const login = useCallback(async (email: string, password: string) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      throw new Error('Enter your email and password.');
     }
+
+    const { user: apiUser } = await loginApi(trimmedEmail, password);
+    const nextUser = mapAuthUser(apiUser);
+    setUser(nextUser);
+    persistUser(nextUser);
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
-    }
+    clearStoredToken();
+    clearPersistedUser();
   }, []);
 
   const value: AuthContextValue = {
     user,
+    isBootstrapping,
     login,
     logout,
-    isAdmin: user?.role === 'admin',
-    isSales: user?.role === 'sales',
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
-}
-
-/** Paths only admin can access. Sales person is redirected to dashboard if they hit these. */
-export const ADMIN_ONLY_PATHS = [
-  '/dashboard/inventory',
-  '/dashboard/purchases',
-  '/dashboard/reports',
-  '/dashboard/settings',
-] as const;
-
-export function isAdminOnlyPath(pathname: string): boolean {
-  return ADMIN_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
 }

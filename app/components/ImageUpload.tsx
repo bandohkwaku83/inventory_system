@@ -50,7 +50,7 @@ export default function ImageUpload({ value, onChange, disabled }: ImageUploadPr
       tabIndex={0}
       onClick={handleClick}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
-      className={`flex h-24 w-full cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:border-teal-300 hover:bg-teal-50/50 overflow-hidden relative ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+      className={`flex h-24 w-full cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:border-[#25395c]/40 hover:bg-[#25395c]/5 overflow-hidden relative ${disabled ? 'pointer-events-none opacity-60' : ''}`}
     >
       <input
         ref={inputRef}

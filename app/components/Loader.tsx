@@ -1,62 +1,46 @@
 'use client';
 
 import React from 'react';
-import { Storefront as StorefrontIcon } from '@mui/icons-material';
+import { BRAND, SYSTEM_LOGO } from '../lib/brand';
 
 interface LoaderProps {
   isLoading: boolean;
 }
 
 export default function Loader({ isLoading }: LoaderProps) {
-  if (!isLoading) return null;
-
   return (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-teal-600 via-teal-700 to-teal-800"
+      className={`fixed inset-0 z-[9999] flex items-center justify-center bg-white transition-opacity duration-500 ease-out ${
+        isLoading ? 'opacity-100' : 'pointer-events-none opacity-0'
+      }`}
       role="status"
       aria-live="polite"
       aria-label="Loading"
+      aria-hidden={!isLoading}
     >
-      {/* Subtle pattern overlay */}
-      <div
-        className="absolute inset-0 opacity-[0.06]"
-        style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
-          backgroundSize: '24px 24px',
-        }}
-        aria-hidden
-      />
+      <div className="flex flex-col items-center">
+        <span
+          className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl p-1.5 shadow-[0_8px_24px_-12px_rgba(37,57,92,0.35)]"
+          style={{ backgroundColor: BRAND }}
+        >
+          <img src={SYSTEM_LOGO} alt="" className="max-h-full max-w-full object-contain" />
+        </span>
 
-      <div className="relative flex flex-col items-center gap-10">
-        {/* Icon + text */}
-        <div className="flex flex-col items-center gap-6">
-          <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-white/15 backdrop-blur-sm ring-1 ring-white/20 shadow-2xl">
-            <StorefrontIcon className="text-white text-5xl" />
-          </div>
-          <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-sm">
-              Inventory System
-            </h1>
-            <p className="mt-2 text-sm font-medium text-teal-100">
-              Please wait
-            </p>
-          </div>
+        <div className="mt-5 text-center">
+          <p className="text-[15px] font-semibold tracking-tight text-slate-900">
+            Onyx Build &amp; Partners
+          </p>
+          <p className="mt-1 text-[10.5px] font-medium uppercase tracking-[0.22em] text-slate-400">
+            Inventory
+          </p>
         </div>
 
-        {/* Dots pulse */}
-        <div className="flex items-center gap-2" aria-hidden>
-          <span className="h-2 w-2 rounded-full bg-white/90 animate-loader-dot [animation-delay:0ms]" />
-          <span className="h-2 w-2 rounded-full bg-white/90 animate-loader-dot [animation-delay:160ms]" />
-          <span className="h-2 w-2 rounded-full bg-white/90 animate-loader-dot [animation-delay:320ms]" />
+        <div className="mt-6 h-[2px] w-28 overflow-hidden rounded-full bg-slate-200/80" aria-hidden>
+          <div
+            className="h-full w-1/3 rounded-full animate-loader-line"
+            style={{ backgroundColor: BRAND }}
+          />
         </div>
-      </div>
-
-      {/* Bottom line loader */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 overflow-hidden">
-        <div
-          className="h-full w-1/3 bg-white rounded-full animate-loader-line"
-          aria-hidden
-        />
       </div>
     </div>
   );
