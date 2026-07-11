@@ -20,22 +20,21 @@ import {
   EditOutlined,
   DeleteOutlined,
   SearchOutlined,
-  PictureOutlined,
 } from '@ant-design/icons';
 import DashboardLayout from '../../components/DashboardLayout';
 import ImageUpload from '../../components/ImageUpload';
-import { useAuth } from '../../context/AuthContext';
 import { useProducts, type Product } from '../../context/ProductsContext';
+import { productImageSrc } from '../../lib/productsApi';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 export default function ProductsPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const { products, updateProduct, deleteProduct, categories } = useProducts();
+  const { products, productsLoading, addProduct, updateProduct, deleteProduct, units, categoryOptions } =
+    useProducts();
   const [open, setOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [mode, setMode] = useState<'add' | 'edit'>('edit');
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [form] = Form.useForm();
@@ -43,7 +42,7 @@ export default function ProductsPage() {
   const filteredProducts = useMemo(() => {
     let list = products;
     if (categoryFilter) {
-      list = list.filter((p) => p.category === categoryFilter);
+      list = list.filter((p) => p.categoryId === categoryFilter);
     }
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
@@ -58,14 +57,14 @@ export default function ProductsPage() {
   }, [products, searchText, categoryFilter]);
 
   const handleOpenEdit = (product: Product) => {
-    if (!isAdmin) return;
+    setMode('edit');
     setEditingProduct(product);
     form.setFieldsValue({
       name: product.name,
-      category: product.category,
-      description: '',
+      categoryId: product.categoryId,
+      description: product.description ?? '',
       price: product.price,
-      costPrice: product.costPrice,
+      costPrice: product.costPrice ?? undefined,
       sku: product.sku || '',
       unit: product.unit,
       quantity: product.quantity,
@@ -75,34 +74,73 @@ export default function ProductsPage() {
     setOpen(true);
   };
 
+  const handleOpenAdd = () => {
+    setMode('add');
+    setEditingProduct(null);
+    form.resetFields();
+    form.setFieldsValue({
+      unit: units[0] ?? 'units',
+      categoryId: categoryOptions[0]?.id,
+    });
+    setOpen(true);
+  };
+
   const handleClose = () => {
     setOpen(false);
     setEditingProduct(null);
+    setMode('edit');
     form.resetFields();
   };
 
   const handleSave = () => {
-    if (!editingProduct) return;
-    form.validateFields().then((values) => {
+    if (mode === 'edit') {
+      if (!editingProduct) return;
+    }
+    void form.validateFields().then(async (values) => {
       const quantity = Number(values.quantity ?? 0);
       const reorderLevel = Number(values.reorderLevel ?? 0);
-      updateProduct(editingProduct.id, {
-        name: values.name,
-        category: values.category,
-        price: values.price,
-        costPrice: values.costPrice,
-        sku: values.sku,
-        unit: values.unit,
+      const costRaw = values.costPrice;
+      const costPrice =
+        costRaw === null || costRaw === undefined || costRaw === ''
+          ? null
+          : Number(costRaw);
+      const trimmedSku =
+        values.sku == null || values.sku === '' ? '' : String(values.sku).trim();
+
+      const basePayload = {
+        name: values.name as string,
+        categoryId: values.categoryId as string,
+        description: (values.description as string) ?? '',
+        price: Number(values.price ?? 0),
+        costPrice,
+        unit: values.unit as string,
         quantity,
         reorderLevel,
         image: values.image ?? null,
-      });
-      handleClose();
+      };
+
+      try {
+        if (mode === 'edit') {
+          const prevSku = editingProduct!.sku?.trim() ?? '';
+          const skuChanged = trimmedSku !== prevSku;
+          await updateProduct(editingProduct!.id, {
+            ...basePayload,
+            ...(skuChanged ? { sku: trimmedSku === '' ? null : trimmedSku } : {}),
+          });
+        } else {
+          await addProduct({
+            ...basePayload,
+            sku: trimmedSku === '' ? undefined : trimmedSku,
+          });
+        }
+        handleClose();
+      } catch {
+        /* message shown in context */
+      }
     });
   };
 
-  const handleDelete = (id: number) => {
-    if (!isAdmin) return;
+  const handleDelete = (id: string) => {
     Modal.confirm({
       title: 'Delete product',
       content: 'Are you sure you want to delete this product? This action cannot be undone.',
@@ -120,8 +158,13 @@ export default function ProductsPage() {
       width: 280,
       render: (_, record) => (
         <Space align="center" size="middle">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
-            <PictureOutlined className="text-xl" />
+          <div className="flex h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={productImageSrc(record.image)}
+              alt=""
+              className="h-full w-full object-contain p-1"
+            />
           </div>
           <div className="min-w-0">
             <Text strong className="block truncate">
@@ -155,7 +198,7 @@ export default function ProductsPage() {
       align: 'right',
       sorter: (a, b) => a.price - b.price,
       render: (price: number) => (
-        <Text strong style={{ color: '#059669' }}>
+        <Text strong style={{ color: '#25395c' }}>
           GHS {price.toFixed(2)}
         </Text>
       ),
@@ -166,8 +209,10 @@ export default function ProductsPage() {
       key: 'costPrice',
       width: 120,
       align: 'right',
-      render: (costPrice: number) => (
-        <Text type="secondary">GHS {costPrice.toFixed(2)}</Text>
+      render: (costPrice: number | null) => (
+        <Text type="secondary">
+          {costPrice == null ? '—' : `GHS ${costPrice.toFixed(2)}`}
+        </Text>
       ),
     },
     {
@@ -191,54 +236,60 @@ export default function ProductsPage() {
         );
       },
     },
-    ...(isAdmin
-      ? [
-          {
-            title: 'Actions',
-            key: 'action',
-            width: 120,
-            fixed: 'right' as const,
-            render: (_: unknown, record: Product) => (
-              <Space size="small">
-                <Tooltip title="Edit">
-                  <Button
-                    type="text"
-                    icon={<EditOutlined />}
-                    onClick={() => handleOpenEdit(record)}
-                    className="text-teal-600 hover:!text-teal-700 hover:!bg-teal-50"
-                  />
-                </Tooltip>
-                <Tooltip title="Delete">
-                  <Button
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleDelete(record.id)}
-                  />
-                </Tooltip>
-              </Space>
-            ),
-          },
-        ]
-      : []),
+    {
+      title: 'Actions',
+      key: 'action',
+      width: 120,
+      fixed: 'right' as const,
+      render: (_: unknown, record: Product) => (
+        <Space size="small">
+          <Tooltip title="Edit">
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => handleOpenEdit(record)}
+              className="text-[#25395c] hover:!text-[#1a2842] hover:!bg-[#25395c]/10"
+            />
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(record.id)}
+            />
+          </Tooltip>
+        </Space>
+      ),
+    },
   ];
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         {/* Page header */}
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <Title level={4} className="!mb-1 !font-bold !text-slate-800">
             Products
           </Title>
-          <Text type="secondary">
-            {isAdmin ? 'Edit products and prices; add new items from Inventory → Add stock item' : 'Browse products and prices'}
-          </Text>
+          <div className="flex flex-col items-end gap-1">
+            <Text type="secondary" className="text-right">
+              Add, edit and manage your product catalog
+            </Text>
+            <Button
+              type="primary"
+              onClick={handleOpenAdd}
+              className="!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842]"
+            >
+              Add Product
+            </Button>
+          </div>
         </div>
 
         {/* Table card */}
         <Card
           className="shadow-sm"
+          loading={productsLoading}
           styles={{
             body: { padding: 0 },
           }}
@@ -248,7 +299,7 @@ export default function ProductsPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
               <div className="w-full min-w-0 sm:w-80 sm:min-w-[280px]">
                 <Input
-                  placeholder="Search by name, category or SKU..."
+                  placeholder="Search by name, category, or SKU..."
                   prefix={<SearchOutlined className="text-slate-400" />}
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
@@ -262,7 +313,7 @@ export default function ProductsPage() {
                 allowClear
                 value={categoryFilter ?? undefined}
                 onChange={(v) => setCategoryFilter(v ?? null)}
-                options={categories.map((c) => ({ label: c, value: c }))}
+                options={categoryOptions.map((c) => ({ label: c.name, value: c.id }))}
                 className="!w-full sm:!w-[200px]"
                 size="large"
               />
@@ -292,17 +343,17 @@ export default function ProductsPage() {
 
       {/* Edit modal only - add new products via Inventory → Add stock item */}
       <Modal
-        title="Edit product"
+        title={mode === 'edit' ? 'Edit product' : 'Add product'}
         open={open}
         onCancel={handleClose}
         onOk={handleSave}
-        okText="Update"
+        okText={mode === 'edit' ? 'Update' : 'Create'}
         cancelText="Cancel"
         width={520}
         style={{ maxWidth: '95vw' }}
-        destroyOnClose
+        destroyOnHidden
         okButtonProps={{
-          className: '!bg-teal-600 !border-teal-600 hover:!bg-teal-700',
+          className: '!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842]',
         }}
       >
         <Form
@@ -324,14 +375,14 @@ export default function ProductsPage() {
           </Form.Item>
 
           <Form.Item
-            name="category"
+            name="categoryId"
             label="Category"
             rules={[{ required: true, message: 'Please select a category' }]}
           >
             <Select
               placeholder="Select category"
               size="large"
-              options={categories.map((c) => ({ label: c, value: c }))}
+              options={categoryOptions.map((c) => ({ label: c.name, value: c.id }))}
             />
           </Form.Item>
 
@@ -356,7 +407,6 @@ export default function ProductsPage() {
             <Form.Item
               name="costPrice"
               label="Cost price (GHS)"
-              rules={[{ required: true, message: 'Required' }]}
             >
               <InputNumber
                 min={0}
@@ -372,14 +422,7 @@ export default function ProductsPage() {
             <Select
               placeholder="Select unit"
               size="large"
-              options={[
-                { label: 'units', value: 'units' },
-                { label: 'kg', value: 'kg' },
-                { label: 'L', value: 'L' },
-                { label: 'pack', value: 'pack' },
-                { label: 'boxes', value: 'boxes' },
-                { label: 'pieces', value: 'pieces' },
-              ]}
+              options={units.map((u) => ({ label: u, value: u }))}
             />
           </Form.Item>
 
@@ -392,7 +435,7 @@ export default function ProductsPage() {
             </Form.Item>
           </div>
 
-          <Form.Item name="sku" label="SKU / Barcode">
+          <Form.Item name="sku" label="SKU / Barcode (optional)">
             <Input placeholder="e.g. MLK-001" size="large" />
           </Form.Item>
         </Form>

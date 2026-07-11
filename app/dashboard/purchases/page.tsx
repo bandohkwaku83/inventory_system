@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Card,
   Table,
@@ -9,12 +9,13 @@ import {
   Button,
   Input,
   Modal,
-  Form,
   Select,
   InputNumber,
   Typography,
   Tooltip,
   Divider,
+  Empty,
+  DatePicker,
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
@@ -23,120 +24,290 @@ import {
   DeleteOutlined,
   FileTextOutlined,
   ShoppingCartOutlined,
+  DollarOutlined,
+  EyeOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
 import DashboardLayout from '../../components/DashboardLayout';
+import { useSuppliers } from '../../context/SuppliersContext';
+import { useProducts } from '../../context/ProductsContext';
+import {
+  usePurchases,
+  getPaymentStatus,
+  type Purchase,
+  type PurchaseItem,
+  type PaymentStatus,
+} from '../../context/PurchasesContext';
 
 const { Title, Text } = Typography;
 
-interface PurchaseItem {
+const currency = (v: number) => `GHS ${v.toFixed(2)}`;
+
+const formatDate = (iso?: string) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const formatDateTime = (iso?: string) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const paymentTone = (status: PaymentStatus) =>
+  status === 'paid' ? 'green' : status === 'partial' ? 'gold' : 'red';
+
+const paymentLabel = (status: PaymentStatus) =>
+  status === 'paid' ? 'Paid' : status === 'partial' ? 'Partial' : 'Unpaid';
+
+interface DraftItem {
+  key: string;
+  productId?: string;
   name: string;
-  quantity: string;
+  unit: string;
+  quantity: number;
   unitPrice: number;
-  total: number;
 }
-
-interface Purchase {
-  id: number;
-  date: string;
-  supplier: string;
-  invoiceNumber: string;
-  items: PurchaseItem[];
-  totalCost: number;
-  status: string;
-}
-
-const initialPurchases: Purchase[] = [
-  { id: 1, date: '2024-01-15', supplier: 'Wholesale Grocers', invoiceNumber: 'INV-001', items: [{ name: 'Rice 2kg', quantity: '50 units', unitPrice: 12, total: 600 }], totalCost: 600, status: 'Completed' },
-  { id: 2, date: '2024-01-14', supplier: 'Dairy Co', invoiceNumber: 'INV-002', items: [{ name: 'Milk 1L', quantity: '100 units', unitPrice: 5, total: 500 }], totalCost: 500, status: 'Completed' },
-  { id: 3, date: '2024-01-14', supplier: 'Bakery Supplies', invoiceNumber: 'INV-003', items: [{ name: 'Bread', quantity: '80 units', unitPrice: 2.5, total: 200 }], totalCost: 200, status: 'Completed' },
-];
-
-const stockItems = [
-  { id: 1, name: 'Rice 2kg', unit: 'units' },
-  { id: 2, name: 'Cooking Oil 1L', unit: 'units' },
-  { id: 3, name: 'Milk 1L', unit: 'units' },
-  { id: 4, name: 'Bread', unit: 'units' },
-  { id: 5, name: 'Soft Drinks 500ml', unit: 'units' },
-];
 
 export default function PurchasesPage() {
-  const [purchases, setPurchases] = useState<Purchase[]>(initialPurchases);
+  const { suppliers } = useSuppliers();
+  const { products, refreshProducts } = useProducts();
+  const { purchases, purchasesLoading, purchasesSummary, addPurchase, deletePurchase, recordPayment, fetchPurchase } =
+    usePurchases();
+
+  const [search, setSearch] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | 'all'>('all');
+
   const [open, setOpen] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const [formData, setFormData] = useState<{
-    date: string;
-    supplier: string;
+  const [draft, setDraft] = useState<{
+    date: Dayjs;
+    supplierId: string | null;
     invoiceNumber: string;
-    items: PurchaseItem[];
+    amountPaid: number;
+    items: DraftItem[];
   }>({
-    date: new Date().toISOString().split('T')[0],
-    supplier: '',
+    date: dayjs(),
+    supplierId: null,
     invoiceNumber: '',
+    amountPaid: 0,
     items: [],
   });
-  const [currentItem, setCurrentItem] = useState({ itemId: '', quantity: '', unitPrice: '' });
+  const [currentItem, setCurrentItem] = useState<{
+    productId: string | null;
+    quantity: number | null;
+    unitPrice: number | null;
+  }>({ productId: null, quantity: null, unitPrice: null });
 
-  const filteredPurchases = useMemo(() => {
-    if (!searchText.trim()) return purchases;
-    const q = searchText.toLowerCase();
-    return purchases.filter(
-      (p) =>
-        p.supplier.toLowerCase().includes(q) ||
-        p.invoiceNumber.toLowerCase().includes(q)
+  const [paymentTarget, setPaymentTarget] = useState<Purchase | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+
+  const [viewing, setViewing] = useState<Purchase | null>(null);
+
+  const supplierMap = useMemo(
+    () => Object.fromEntries(suppliers.map((s) => [s.id, s])),
+    [suppliers]
+  );
+
+  const filtered = useMemo(() => {
+    let list = purchases;
+    if (supplierFilter) list = list.filter((p) => p.supplierId === supplierFilter);
+    if (paymentFilter !== 'all')
+      list = list.filter((p) => getPaymentStatus(p) === paymentFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.supplierName.toLowerCase().includes(q) ||
+          (p.invoiceNumber && p.invoiceNumber.toLowerCase().includes(q)) ||
+          p.items.some((i) => i.name.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [purchases, search, supplierFilter, paymentFilter]);
+
+  const stats = useMemo(() => {
+    if (purchasesSummary) {
+      return {
+        count: purchasesSummary.purchaseCount,
+        totalSpend: purchasesSummary.totalSpend,
+        outstanding: purchasesSummary.outstanding,
+        unpaidCount: purchasesSummary.unpaidInvoicesCount,
+      };
+    }
+    const totalSpend = purchases.reduce((s, p) => s + p.totalCost, 0);
+    const outstanding = purchases.reduce(
+      (s, p) => s + Math.max(0, p.totalCost - p.amountPaid),
+      0
     );
-  }, [purchases, searchText]);
+    const unpaidCount = purchases.filter((p) => getPaymentStatus(p) !== 'paid').length;
+    return { count: purchases.length, totalSpend, outstanding, unpaidCount };
+  }, [purchasesSummary, purchases]);
 
-  const handleOpen = () => {
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      supplier: '',
+  const openView = async (row: Purchase) => {
+    setViewing(row);
+    const fresh = await fetchPurchase(row.id);
+    if (fresh) setViewing(fresh);
+  };
+
+  const draftTotal = draft.items.reduce(
+    (sum, i) => sum + i.quantity * i.unitPrice,
+    0
+  );
+  const draftBalance = Math.max(0, draftTotal - draft.amountPaid);
+
+  const openAdd = () => {
+    const defaultSupplier =
+      suppliers.find((s) => s.status === 'active') ?? suppliers[0];
+    setDraft({
+      date: dayjs(),
+      supplierId: defaultSupplier?.id ?? null,
       invoiceNumber: '',
+      amountPaid: 0,
       items: [],
     });
-    setCurrentItem({ itemId: '', quantity: '', unitPrice: '' });
+    setCurrentItem({ productId: null, quantity: null, unitPrice: null });
     setOpen(true);
   };
 
-  const handleClose = () => setOpen(false);
-
   const handleAddItem = () => {
-    const { itemId, quantity, unitPrice } = currentItem;
-    if (!itemId || !quantity || !unitPrice) return;
-    const stock = stockItems.find((s) => s.id === parseInt(itemId, 10));
-    const qty = parseFloat(quantity);
-    const price = parseFloat(unitPrice);
-    setFormData({
-      ...formData,
+    const { productId, quantity, unitPrice } = currentItem;
+    if (productId == null || quantity == null || unitPrice == null) return;
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setDraft((d) => ({
+      ...d,
       items: [
-        ...formData.items,
+        ...d.items,
         {
-          name: stock?.name ?? 'Unknown',
-          quantity: `${qty} ${stock?.unit ?? 'units'}`,
-          unitPrice: price,
-          total: qty * price,
+          key: `${product.id}-${Date.now()}-${d.items.length}`,
+          productId: product.id,
+          name: product.name,
+          unit: product.unit,
+          quantity,
+          unitPrice,
         },
       ],
+    }));
+    setCurrentItem({ productId: null, quantity: null, unitPrice: null });
+  };
+
+  const handleRemoveItem = (key: string) => {
+    setDraft((d) => ({ ...d, items: d.items.filter((item) => item.key !== key) }));
+  };
+
+  const handleSave = async () => {
+    if (!draft.supplierId || draft.items.length === 0) return;
+    const supplier = supplierMap[draft.supplierId];
+    if (!supplier) return;
+    const items: PurchaseItem[] = draft.items.map((i) => ({
+      productId: i.productId,
+      name: i.name,
+      unit: i.unit,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      total: +(i.quantity * i.unitPrice).toFixed(2),
+    }));
+    const totalCost = items.reduce((s, i) => s + i.total, 0);
+    try {
+      await addPurchase({
+        date: draft.date.format('YYYY-MM-DD'),
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        invoiceNumber: draft.invoiceNumber || undefined,
+        items,
+        totalCost: +totalCost.toFixed(2),
+        amountPaid: Math.min(draft.amountPaid, totalCost),
+        status: 'completed',
+      });
+      void refreshProducts();
+      setOpen(false);
+    } catch {
+      /* message from context */
+    }
+  };
+
+  const handleDelete = (row: Purchase) => {
+    Modal.confirm({
+      title: 'Delete purchase',
+      content: (
+        <div>
+          Delete purchase from <strong>{row.supplierName}</strong> on{' '}
+          <strong>{formatDate(row.date)}</strong>? This action cannot be undone.
+        </div>
+      ),
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: () => deletePurchase(row.id),
     });
-    setCurrentItem({ itemId: '', quantity: '', unitPrice: '' });
   };
 
-  const handleRemoveItem = (index: number) => {
-    setFormData({ ...formData, items: formData.items.filter((_, i) => i !== index) });
+  const openPayment = (row: Purchase) => {
+    setPaymentTarget(row);
+    setPaymentAmount(Math.max(0, row.totalCost - row.amountPaid));
   };
 
-  const handleSave = () => {
-    const totalCost = formData.items.reduce((sum, i) => sum + i.total, 0);
-    const newPurchase: Purchase = {
-      id: purchases.length + 1,
-      ...formData,
-      totalCost,
-      status: 'Completed',
-    };
-    setPurchases([newPurchase, ...purchases]);
-    handleClose();
+  const handleRecordPayment = async () => {
+    if (!paymentTarget || paymentAmount == null || paymentAmount <= 0) return;
+    try {
+      await recordPayment(paymentTarget.id, paymentAmount);
+      setPaymentTarget(null);
+      setPaymentAmount(null);
+    } catch {
+      /* message from context */
+    }
   };
 
-  const totalModal = formData.items.reduce((sum, i) => sum + i.total, 0);
+  const handleExportCsv = () => {
+    const header = [
+      'ID',
+      'Date',
+      'Supplier',
+      'Invoice',
+      'Items',
+      'Total (GHS)',
+      'Paid (GHS)',
+      'Balance (GHS)',
+      'Payment',
+    ];
+    const lines = filtered.map((p) =>
+      [
+        p.id,
+        p.date,
+        p.supplierName,
+        p.invoiceNumber ?? '',
+        p.items.map((i) => `${i.name} x${i.quantity}`).join('; '),
+        p.totalCost.toFixed(2),
+        p.amountPaid.toFixed(2),
+        Math.max(0, p.totalCost - p.amountPaid).toFixed(2),
+        paymentLabel(getPaymentStatus(p)),
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const csv = [header.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `purchases-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const purchaseColumns: TableProps<Purchase>['columns'] = [
     {
@@ -144,33 +315,43 @@ export default function PurchasesPage() {
       dataIndex: 'date',
       key: 'date',
       width: 120,
-      render: (d: string) => <Text>{d}</Text>,
+      sorter: (a, b) => a.date.localeCompare(b.date),
+      defaultSortOrder: 'descend',
+      render: (d: string) => (
+        <Text className="text-xs">{formatDate(d)}</Text>
+      ),
     },
     {
       title: 'Supplier',
-      dataIndex: 'supplier',
       key: 'supplier',
-      width: 160,
-      render: (s: string) => <Text strong>{s || '—'}</Text>,
+      width: 200,
+      render: (_, r) => (
+        <span className="text-sm font-semibold text-slate-800">{r.supplierName}</span>
+      ),
     },
     {
       title: 'Invoice',
       dataIndex: 'invoiceNumber',
       key: 'invoiceNumber',
       width: 120,
-      render: (inv: string) => <Text code>{inv || '—'}</Text>,
+      render: (inv?: string) =>
+        inv ? <Text code>{inv}</Text> : <Text type="secondary">—</Text>,
     },
     {
       title: 'Items',
-      dataIndex: 'items',
       key: 'items',
-      render: (items: PurchaseItem[]) => (
+      render: (_, r) => (
         <div className="flex flex-col gap-0.5">
-          {items.map((it, idx) => (
+          {r.items.slice(0, 2).map((it, idx) => (
             <Text key={idx} type="secondary" className="text-xs">
-              {it.name} · {it.quantity} @ GHS {it.unitPrice.toFixed(2)}
+              {it.name} · {it.quantity} {it.unit} @ {currency(it.unitPrice)}
             </Text>
           ))}
+          {r.items.length > 2 && (
+            <Text type="secondary" className="text-[11px]">
+              +{r.items.length - 2} more…
+            </Text>
+          )}
         </div>
       ),
     },
@@ -180,101 +361,262 @@ export default function PurchasesPage() {
       key: 'totalCost',
       width: 120,
       align: 'right',
-      render: (cost: number) => (
-        <Text strong style={{ color: '#059669' }}>GHS {cost.toFixed(2)}</Text>
+      sorter: (a, b) => a.totalCost - b.totalCost,
+      render: (v: number) => (
+        <Text strong style={{ color: '#25395c' }}>
+          {currency(v)}
+        </Text>
       ),
     },
     {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
+      title: 'Balance',
+      key: 'balance',
+      width: 120,
+      align: 'right',
+      sorter: (a, b) =>
+        Math.max(0, a.totalCost - a.amountPaid) -
+        Math.max(0, b.totalCost - b.amountPaid),
+      render: (_, r) => {
+        const bal = Math.max(0, r.totalCost - r.amountPaid);
+        return (
+          <Text strong style={{ color: bal > 0 ? '#dc2626' : '#94a3b8' }}>
+            {currency(bal)}
+          </Text>
+        );
+      },
+    },
+    {
+      title: 'Payment',
+      key: 'payment',
       width: 110,
-      render: (status: string) => <Tag color="green">{status}</Tag>,
+      filters: [
+        { text: 'Paid', value: 'paid' },
+        { text: 'Partial', value: 'partial' },
+        { text: 'Unpaid', value: 'unpaid' },
+      ],
+      onFilter: (value, record) => getPaymentStatus(record) === value,
+      render: (_, r) => {
+        const ps = getPaymentStatus(r);
+        return (
+          <Tag color={paymentTone(ps)} className="rounded-full">
+            {paymentLabel(ps)}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 140,
+      fixed: 'right' as const,
+      render: (_, r) => {
+        const ps = getPaymentStatus(r);
+        return (
+          <Space size="small">
+            <Tooltip title="View">
+              <Button
+                type="text"
+                icon={<EyeOutlined />}
+                onClick={() => void openView(r)}
+                className="text-slate-600 hover:!text-[#1a2842] hover:!bg-[#25395c]/10"
+              />
+            </Tooltip>
+            <Tooltip title={ps === 'paid' ? 'Fully paid' : 'Record payment'}>
+              <Button
+                type="text"
+                icon={<DollarOutlined />}
+                onClick={() => openPayment(r)}
+                disabled={ps === 'paid'}
+                className="text-[#25395c] hover:!text-[#1a2842] hover:!bg-[#25395c]/10"
+              />
+            </Tooltip>
+            <Tooltip title="Delete">
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleDelete(r)}
+              />
+            </Tooltip>
+          </Space>
+        );
+      },
     },
   ];
 
-  const lineItemColumns: TableProps<PurchaseItem>['columns'] = [
+  const lineItemColumns: TableProps<DraftItem>['columns'] = [
     { title: 'Item', dataIndex: 'name', key: 'name', width: 180 },
-    { title: 'Quantity', dataIndex: 'quantity', key: 'quantity', width: 100 },
+    {
+      title: 'Quantity',
+      key: 'quantity',
+      width: 110,
+      render: (_, r) => `${r.quantity} ${r.unit}`,
+    },
     {
       title: 'Unit price',
       dataIndex: 'unitPrice',
       key: 'unitPrice',
-      width: 110,
+      width: 120,
       align: 'right',
-      render: (p: number) => `GHS ${p.toFixed(2)}`,
+      render: (p: number) => currency(p),
     },
     {
       title: 'Total',
-      dataIndex: 'total',
       key: 'total',
-      width: 110,
+      width: 120,
       align: 'right',
-      render: (t: number) => <Text strong>GHS {t.toFixed(2)}</Text>,
+      render: (_, r) => (
+        <Text strong>{currency(r.quantity * r.unitPrice)}</Text>
+      ),
     },
     {
       title: '',
       key: 'action',
       width: 60,
-      render: (_, __, index) => (
+      render: (_: unknown, r: DraftItem) => (
         <Tooltip title="Remove">
-          <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => handleRemoveItem(index)} />
+          <Button
+            type="text"
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            onClick={() => handleRemoveItem(r.key)}
+          />
         </Tooltip>
       ),
     },
   ];
 
+  const supplierFormOptions = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        label: s.status === 'active' ? s.name : `${s.name} (inactive)`,
+        value: s.id,
+      })),
+    [suppliers]
+  );
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Title level={4} className="!mb-1 !font-bold !text-slate-800">Purchases</Title>
-            <Text type="secondary">Record stock purchases and supplier orders</Text>
+            <Title level={4} className="!mb-1 !font-bold !text-slate-800">
+              Purchases
+            </Title>
+            <Text type="secondary">
+              Record purchases from suppliers and track outstanding balances.
+            </Text>
           </div>
-          <Button
-            type="primary"
-            size="large"
-            icon={<PlusOutlined />}
-            onClick={handleOpen}
-            className="!bg-teal-600 !border-teal-600 hover:!bg-teal-700 hover:!border-teal-700"
-          >
-            Add purchase
-          </Button>
+          <Space wrap>
+            <Button icon={<DownloadOutlined />} onClick={handleExportCsv}>
+              Export CSV
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={openAdd}
+              disabled={suppliers.length === 0}
+              className="!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842]"
+            >
+              Add purchase
+            </Button>
+          </Space>
         </div>
 
-        <Card className="shadow-sm" styles={{ body: { padding: 0 } }}>
-          <div className="purchases-table-toolbar flex flex-col gap-4 border-b border-slate-100 bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-            <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Purchases" value={stats.count.toString()} accent="#1a2842" />
+          <StatCard
+            label="Total spend"
+            value={currency(stats.totalSpend)}
+            accent="#16a34a"
+          />
+          <StatCard
+            label="Outstanding"
+            value={currency(stats.outstanding)}
+            accent="#dc2626"
+          />
+          <StatCard
+            label="Unpaid invoices"
+            value={stats.unpaidCount.toString()}
+            accent="#f59e0b"
+          />
+        </div>
+
+        {/* Table card */}
+        <Card className="shadow-sm" loading={purchasesLoading} styles={{ body: { padding: 0 } }}>
+          <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
               <div className="w-full min-w-0 sm:w-80 sm:min-w-[280px]">
                 <Input
-                  placeholder="Search by supplier name or invoice number..."
+                  placeholder="Search supplier, invoice or item..."
                   prefix={<SearchOutlined className="text-slate-400" />}
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                   allowClear
                   size="large"
                   className="w-full"
                 />
               </div>
+              <Select
+                placeholder="All suppliers"
+                allowClear
+                value={supplierFilter ?? undefined}
+                onChange={(v) => setSupplierFilter(v ?? null)}
+                options={suppliers.map((s) => ({ label: s.name, value: s.id }))}
+                showSearch
+                optionFilterProp="label"
+                className="!w-full sm:!w-[200px]"
+                size="large"
+              />
+              <Select
+                value={paymentFilter}
+                onChange={setPaymentFilter}
+                options={[
+                  { label: 'All payments', value: 'all' },
+                  { label: 'Paid', value: 'paid' },
+                  { label: 'Partial', value: 'partial' },
+                  { label: 'Unpaid', value: 'unpaid' },
+                ]}
+                className="!w-full sm:!w-[160px]"
+                size="large"
+              />
             </div>
             <Text type="secondary" className="shrink-0 text-sm">
-              {filteredPurchases.length === purchases.length
+              {filtered.length === purchases.length
                 ? `${purchases.length} purchase${purchases.length !== 1 ? 's' : ''}`
-                : `${filteredPurchases.length} of ${purchases.length} purchase${purchases.length !== 1 ? 's' : ''}`}
+                : `${filtered.length} of ${purchases.length} purchase${purchases.length !== 1 ? 's' : ''}`}
             </Text>
           </div>
+
           <Table<Purchase>
             columns={purchaseColumns}
-            dataSource={filteredPurchases}
+            dataSource={filtered}
             rowKey="id"
-            pagination={{ showSizeChanger: true, showTotal: (t) => `Total ${t}`, pageSizeOptions: ['10', '20', '50'], defaultPageSize: 10 }}
             size="middle"
-            scroll={{ x: 800 }}
+            className="[&_.ant-table]:!text-[14px]"
+            locale={{
+              emptyText: (
+                <Empty
+                  description="No purchases match your filters"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              ),
+            }}
+            pagination={{
+              showSizeChanger: true,
+              showTotal: (t) => `Total ${t}`,
+              pageSizeOptions: ['10', '20', '50'],
+              defaultPageSize: 10,
+            }}
+            scroll={{ x: 1100 }}
           />
         </Card>
       </div>
 
+      {/* New purchase modal */}
       <Modal
         title={
           <Space>
@@ -283,51 +625,81 @@ export default function PurchasesPage() {
           </Space>
         }
         open={open}
-        onCancel={handleClose}
+        onCancel={() => setOpen(false)}
         onOk={handleSave}
         okText="Save purchase"
         cancelText="Cancel"
-        width={640}
+        width={680}
         style={{ maxWidth: '95vw' }}
-        destroyOnClose
+        destroyOnHidden
         okButtonProps={{
-          disabled: formData.items.length === 0,
-          className: '!bg-teal-600 !border-teal-600 hover:!bg-teal-700',
+          disabled: draft.items.length === 0 || !draft.supplierId,
+          className: '!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842]',
         }}
       >
         <div className="space-y-4 py-2">
-          <Space wrap size="middle" className="w-full">
-            <div className="w-40">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
               <label className="mb-1 block text-xs text-slate-500">Date</label>
-              <Input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              <DatePicker
+                value={draft.date}
+                onChange={(d) => setDraft({ ...draft, date: d ?? dayjs() })}
                 size="large"
-                className="rounded-lg"
+                className="w-full"
+                allowClear={false}
               />
             </div>
-            <div className="min-w-0 flex-1 sm:min-w-[180px]">
-              <label className="mb-1 block text-xs text-slate-500">Supplier (optional)</label>
-              <Input
-                placeholder="Supplier name"
-                value={formData.supplier}
-                onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs text-slate-500">Supplier</label>
+              <Select
+                value={draft.supplierId ?? undefined}
+                onChange={(v) => setDraft({ ...draft, supplierId: v ?? null })}
+                options={supplierFormOptions}
+                placeholder="Select supplier"
                 size="large"
-                className="rounded-lg"
+                showSearch
+                optionFilterProp="label"
+                className="w-full"
+                notFoundContent={
+                  suppliers.length === 0
+                    ? 'No suppliers yet — add one from the Suppliers page'
+                    : 'No matches'
+                }
               />
             </div>
-            <div className="min-w-0 flex-1 sm:min-w-[140px]">
-              <label className="mb-1 block text-xs text-slate-500">Invoice (optional)</label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">
+                Invoice number (optional)
+              </label>
               <Input
                 placeholder="e.g. INV-001"
-                value={formData.invoiceNumber}
-                onChange={(e) => setFormData({ ...formData, invoiceNumber: e.target.value })}
+                value={draft.invoiceNumber}
+                onChange={(e) =>
+                  setDraft({ ...draft, invoiceNumber: e.target.value })
+                }
                 size="large"
-                className="rounded-lg"
               />
             </div>
-          </Space>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">
+                Amount paid (GHS)
+              </label>
+              <InputNumber
+                min={0}
+                step={0.01}
+                value={draft.amountPaid}
+                onChange={(v) =>
+                  setDraft({ ...draft, amountPaid: typeof v === 'number' ? v : 0 })
+                }
+                className="w-full"
+                size="large"
+                addonBefore="GHS"
+              />
+            </div>
+          </div>
 
           <Divider className="!my-4">
             <FileTextOutlined className="mr-1 text-slate-400" />
@@ -335,55 +707,110 @@ export default function PurchasesPage() {
           </Divider>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Select
-                placeholder="Select item"
-                value={currentItem.itemId || undefined}
-                onChange={(v) => setCurrentItem({ ...currentItem, itemId: v ?? '' })}
-                options={stockItems.map((s) => ({ label: `${s.name} (${s.unit})`, value: s.id.toString() }))}
-                className="min-w-0 flex-1 sm:min-w-[180px]"
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_100px_140px_auto] sm:items-end">
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Product</label>
+                <Select
+                  placeholder="Select product"
+                  value={currentItem.productId ?? undefined}
+                  onChange={(v) => {
+                    const product = products.find((p) => p.id === v);
+                    setCurrentItem({
+                      productId: v ?? null,
+                      quantity: currentItem.quantity,
+                      unitPrice: product?.costPrice ?? currentItem.unitPrice,
+                    });
+                  }}
+                  options={products.map((p) => ({
+                    label: `${p.name} (${p.unit})`,
+                    value: p.id,
+                  }))}
+                  className="w-full"
+                  size="large"
+                  showSearch
+                  optionFilterProp="label"
+                  allowClear
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Qty</label>
+                <InputNumber
+                  min={0.01}
+                  step={1}
+                  value={currentItem.quantity ?? undefined}
+                  onChange={(v) =>
+                    setCurrentItem({
+                      ...currentItem,
+                      quantity: typeof v === 'number' ? v : null,
+                    })
+                  }
+                  className="w-full"
+                  size="large"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Unit price</label>
+                <InputNumber
+                  min={0}
+                  step={0.01}
+                  value={currentItem.unitPrice ?? undefined}
+                  onChange={(v) =>
+                    setCurrentItem({
+                      ...currentItem,
+                      unitPrice: typeof v === 'number' ? v : null,
+                    })
+                  }
+                  className="w-full"
+                  size="large"
+                  addonBefore="GHS"
+                />
+              </div>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAddItem}
                 size="large"
-                allowClear
-              />
-              <InputNumber
-                placeholder="Qty"
-                min={0.01}
-                step={1}
-                value={currentItem.quantity ? parseFloat(currentItem.quantity) : undefined}
-                onChange={(v) => setCurrentItem({ ...currentItem, quantity: v != null ? String(v) : '' })}
-                className="!w-24"
-                size="large"
-              />
-              <InputNumber
-                placeholder="Unit price"
-                min={0}
-                step={0.01}
-                value={currentItem.unitPrice ? parseFloat(currentItem.unitPrice) : undefined}
-                onChange={(v) => setCurrentItem({ ...currentItem, unitPrice: v != null ? String(v) : '' })}
-                className="!w-32"
-                size="large"
-                addonBefore="GHS"
-              />
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleAddItem} size="large" className="!bg-teal-600 hover:!bg-teal-700">
+                className="!bg-[#25395c] hover:!bg-[#1a2842]"
+                disabled={
+                  currentItem.productId == null ||
+                  currentItem.quantity == null ||
+                  currentItem.unitPrice == null
+                }
+              >
                 Add
               </Button>
             </div>
 
-            {formData.items.length > 0 ? (
+            {draft.items.length > 0 ? (
               <>
                 <div className="overflow-x-auto -mx-1">
-                  <Table<PurchaseItem>
+                  <Table<DraftItem>
                     columns={lineItemColumns}
-                    dataSource={formData.items}
-                    rowKey={(_, i) => String(i)}
+                    dataSource={draft.items}
+                    rowKey="key"
                     pagination={false}
                     size="small"
-                    scroll={{ x: 500 }}
+                    scroll={{ x: 540 }}
                   />
                 </div>
-                <div className="mt-4 flex justify-end border-t border-slate-200 pt-4">
+                <div className="mt-4 flex flex-col gap-1 border-t border-slate-200 pt-4 text-right sm:items-end">
+                  <Text className="text-sm">
+                    Subtotal:{' '}
+                    <span className="font-semibold text-slate-800">
+                      {currency(draftTotal)}
+                    </span>
+                  </Text>
+                  <Text className="text-sm">
+                    Paid:{' '}
+                    <span className="font-semibold text-[#25395c]">
+                      {currency(Math.min(draft.amountPaid, draftTotal))}
+                    </span>
+                  </Text>
                   <Text strong className="text-base">
-                    Total: <span className="text-teal-600">GHS {totalModal.toFixed(2)}</span>
+                    Balance:{' '}
+                    <span className={draftBalance > 0 ? 'text-red-600' : 'text-slate-400'}>
+                      {currency(draftBalance)}
+                    </span>
                   </Text>
                 </div>
               </>
@@ -396,6 +823,216 @@ export default function PurchasesPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Record payment modal */}
+      <Modal
+        title="Record payment"
+        open={!!paymentTarget}
+        onCancel={() => {
+          setPaymentTarget(null);
+          setPaymentAmount(null);
+        }}
+        onOk={handleRecordPayment}
+        okText="Record"
+        cancelText="Cancel"
+        okButtonProps={{
+          className: '!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842]',
+          disabled: !paymentAmount || paymentAmount <= 0,
+        }}
+      >
+        {paymentTarget && (
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+              <div className="text-slate-500">Supplier</div>
+              <div className="font-semibold text-slate-800">
+                {paymentTarget.supplierName}
+              </div>
+              <div className="mt-1 grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div className="text-slate-500">Total</div>
+                  <div className="font-semibold">{currency(paymentTarget.totalCost)}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Paid</div>
+                  <div className="font-semibold text-[#25395c]">
+                    {currency(paymentTarget.amountPaid)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Balance</div>
+                  <div className="font-semibold text-red-600">
+                    {currency(Math.max(0, paymentTarget.totalCost - paymentTarget.amountPaid))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">
+                Payment amount (GHS)
+              </label>
+              <InputNumber
+                min={0.01}
+                max={Math.max(0, paymentTarget.totalCost - paymentTarget.amountPaid)}
+                step={0.01}
+                value={paymentAmount ?? undefined}
+                onChange={(v) =>
+                  setPaymentAmount(typeof v === 'number' ? v : null)
+                }
+                className="w-full"
+                size="large"
+                addonBefore="GHS"
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Purchase details modal */}
+      <Modal
+        title="Purchase details"
+        open={!!viewing}
+        onCancel={() => setViewing(null)}
+        footer={
+          <Button onClick={() => setViewing(null)}>Close</Button>
+        }
+        width={620}
+      >
+        {viewing && (
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <div className="text-xs text-slate-500">Date</div>
+                <div className="font-semibold">{formatDate(viewing.date)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Supplier</div>
+                <div className="font-semibold">{viewing.supplierName}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Invoice</div>
+                <div className="font-semibold">{viewing.invoiceNumber || '—'}</div>
+              </div>
+            </div>
+
+            <Table<PurchaseItem>
+              dataSource={viewing.items}
+              rowKey={(r) =>
+                r.productId
+                  ? `${r.productId}-${r.quantity}-${r.unitPrice}-${r.name}`
+                  : `${r.name}-${r.quantity}-${r.unitPrice}`
+              }
+              pagination={false}
+              size="small"
+              columns={[
+                { title: 'Item', dataIndex: 'name', key: 'name' },
+                {
+                  title: 'Qty',
+                  key: 'qty',
+                  align: 'right',
+                  render: (_, r) => `${r.quantity} ${r.unit}`,
+                },
+                {
+                  title: 'Unit',
+                  dataIndex: 'unitPrice',
+                  key: 'unitPrice',
+                  align: 'right',
+                  render: (v: number) => currency(v),
+                },
+                {
+                  title: 'Total',
+                  dataIndex: 'total',
+                  key: 'total',
+                  align: 'right',
+                  render: (v: number) => <Text strong>{currency(v)}</Text>,
+                },
+              ]}
+            />
+
+            <div className="flex flex-col items-end gap-1 border-t border-slate-200 pt-3 text-sm">
+              <div>
+                Subtotal:{' '}
+                <span className="font-semibold">{currency(viewing.totalCost)}</span>
+              </div>
+              <div>
+                Paid:{' '}
+                <span className="font-semibold text-[#25395c]">
+                  {currency(viewing.amountPaid)}
+                </span>
+              </div>
+              <div className="text-base">
+                Balance:{' '}
+                <span
+                  className={`font-semibold ${
+                    (viewing.balance !== undefined && viewing.balance !== null
+                      ? viewing.balance
+                      : Math.max(0, viewing.totalCost - viewing.amountPaid)) > 0
+                      ? 'text-red-600'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {currency(
+                    viewing.balance !== undefined && viewing.balance !== null
+                      ? viewing.balance
+                      : Math.max(0, viewing.totalCost - viewing.amountPaid)
+                  )}
+                </span>
+              </div>
+              <Tag
+                color={paymentTone(getPaymentStatus(viewing))}
+                className="rounded-full"
+              >
+                {paymentLabel(getPaymentStatus(viewing))}
+              </Tag>
+            </div>
+
+            {viewing.payments && viewing.payments.length > 0 && (
+              <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Payment history
+                </div>
+                <ul className="space-y-2">
+                  {[...viewing.payments]
+                    .sort(
+                      (a, b) =>
+                        new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+                    )
+                    .map((pay) => (
+                      <li
+                        key={pay.id}
+                        className="flex items-center justify-between gap-3 text-sm"
+                      >
+                        <span className="text-slate-600">{formatDateTime(pay.recordedAt)}</span>
+                        <span className="font-semibold text-[#25395c]">{currency(pay.amount)}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </DashboardLayout>
+  );
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  accent?: string;
+}
+
+function StatCard({ label, value, accent = '#1a2842' }: StatCardProps) {
+  return (
+    <Card className="shadow-sm">
+      <div className="text-[11px] uppercase tracking-wider text-slate-500">
+        {label}
+      </div>
+      <div
+        className="mt-0.5 truncate text-xl font-semibold"
+        style={{ color: accent }}
+      >
+        {value}
+      </div>
+    </Card>
   );
 }

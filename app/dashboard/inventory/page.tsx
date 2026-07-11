@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Card,
+  Typography,
   Table,
   Space,
   Tag,
@@ -12,12 +13,11 @@ import {
   Form,
   Select,
   InputNumber,
-  Typography,
   Tooltip,
   Upload,
   message,
 } from 'antd';
-import type { TableProps } from 'antd';
+import type { TableProps, UploadProps } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
@@ -25,22 +25,30 @@ import {
   SearchOutlined,
   InboxOutlined,
   UploadOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
-import type { UploadProps } from 'antd';
 import DashboardLayout from '../../components/DashboardLayout';
+import { useActionLoader } from '../../components/LoaderProvider';
 import ImageUpload from '../../components/ImageUpload';
 import { useProducts, getStockStatus, type Product } from '../../context/ProductsContext';
+import { productImageSrc } from '../../lib/productsApi';
+import { useSettings, findCategoryByName } from '../../context/SettingsContext';
+import { parseProductSpreadsheet, downloadProductTemplate } from '../../lib/spreadsheetImport';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 export default function InventoryPage() {
-  const { products, addProduct, updateProduct, deleteProduct, units, categories } = useProducts();
+  const { runWithLoader } = useActionLoader();
+  const { products, productsLoading, addProduct, updateProduct, deleteProduct, units, categoryOptions } =
+    useProducts();
+  const { addCategory } = useSettings();
   const [open, setOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Product | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [form] = Form.useForm();
 
   const filteredItems = useMemo(() => {
@@ -50,20 +58,80 @@ export default function InventoryPage() {
     }
     if (searchText.trim()) {
       const q = searchText.toLowerCase();
-      list = list.filter((i) => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
+      list = list.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          i.category.toLowerCase().includes(q) ||
+          (i.sku && i.sku.toLowerCase().includes(q))
+      );
     }
     return list;
   }, [products, searchText, statusFilter]);
+
+  const resolveCategoryId = async (categoryName: string): Promise<string | null> => {
+    const match =
+      categoryOptions.find((c) => c.name.toLowerCase() === categoryName.toLowerCase()) ??
+      findCategoryByName(
+        categoryOptions.map((c) => ({ id: c.id, name: c.name })),
+        categoryName
+      );
+    if (match) return match.id;
+    const created = await addCategory(categoryName);
+    return created.id;
+  };
+
+  const importRows = async (file: File) => {
+    setImporting(true);
+    try {
+      await runWithLoader(async () => {
+        const rows = await parseProductSpreadsheet(file);
+        if (rows.length === 0) {
+          message.error('No product rows found in file');
+          return;
+        }
+        for (const row of rows) {
+          const categoryId = await resolveCategoryId(row.category);
+          if (!categoryId) continue;
+          try {
+            await addProduct({
+              name: row.name,
+              categoryId,
+              unit: row.unit,
+              quantity: row.quantity,
+              reorderLevel: row.reorderLevel,
+              price: row.price,
+              costPrice: row.costPrice,
+              sku: row.sku,
+              description: row.description,
+              image: null,
+            });
+          } catch {
+            break;
+          }
+        }
+        setImportOpen(false);
+      });
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportFile: UploadProps['customRequest'] = (options) => {
+    const file = options.file as File;
+    void importRows(file).finally(() => options.onSuccess?.(undefined));
+  };
 
   const handleOpen = (item?: Product) => {
     if (item) {
       setEditingItem(item);
       form.setFieldsValue({
         name: item.name,
-        category: item.category,
-        description: '',
+        categoryId: item.categoryId,
+        description: item.description ?? '',
         price: item.price,
-        costPrice: item.costPrice,
+        costPrice: item.costPrice ?? undefined,
         sku: item.sku || '',
         unit: item.unit,
         quantity: item.quantity,
@@ -73,6 +141,10 @@ export default function InventoryPage() {
     } else {
       setEditingItem(null);
       form.resetFields();
+      form.setFieldsValue({
+        unit: units[0] ?? 'units',
+        categoryId: categoryOptions[0]?.id,
+      });
     }
     setOpen(true);
   };
@@ -84,39 +156,49 @@ export default function InventoryPage() {
   };
 
   const handleSave = () => {
-    form.validateFields().then((values) => {
+    void form.validateFields().then(async (values) => {
       const quantity = Number(values.quantity);
       const reorderLevel = Number(values.reorderLevel);
-      if (editingItem) {
-        updateProduct(editingItem.id, {
-          name: values.name,
-          category: values.category,
-          unit: values.unit,
-          quantity,
-          reorderLevel,
-          price: values.price,
-          costPrice: values.costPrice,
-          sku: values.sku,
-          image: values.image ?? null,
-        });
-      } else {
-        addProduct({
-          name: values.name,
-          category: values.category,
-          unit: values.unit,
-          quantity,
-          reorderLevel,
-          price: values.price ?? 0,
-          costPrice: values.costPrice ?? 0,
-          sku: values.sku,
-          image: values.image ?? null,
-        });
+      const costRaw = values.costPrice;
+      const costPrice =
+        costRaw === null || costRaw === undefined || costRaw === ''
+          ? null
+          : Number(costRaw);
+      const trimmedSku =
+        values.sku == null || values.sku === '' ? '' : String(values.sku).trim();
+      const basePayload = {
+        name: values.name as string,
+        categoryId: values.categoryId as string,
+        description: (values.description as string) ?? '',
+        price: Number(values.price ?? 0),
+        costPrice,
+        unit: values.unit as string,
+        quantity,
+        reorderLevel,
+        image: values.image ?? null,
+      };
+      try {
+        if (editingItem) {
+          const prevSku = editingItem.sku?.trim() ?? '';
+          const skuChanged = trimmedSku !== prevSku;
+          await updateProduct(editingItem.id, {
+            ...basePayload,
+            ...(skuChanged ? { sku: trimmedSku === '' ? null : trimmedSku } : {}),
+          });
+        } else {
+          await addProduct({
+            ...basePayload,
+            sku: trimmedSku === '' ? undefined : trimmedSku,
+          });
+        }
+        handleClose();
+      } catch {
+        /* message from context */
       }
-      handleClose();
     });
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: string) => {
     Modal.confirm({
       title: 'Delete product',
       content: 'This will remove the item from both Products and Inventory. Continue?',
@@ -127,69 +209,6 @@ export default function InventoryPage() {
     });
   };
 
-  const parseCSV = (text: string): Record<string, string>[] => {
-    const lines = text.trim().split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
-    const rows: Record<string, string>[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map((v) => v.trim());
-      const row: Record<string, string> = {};
-      headers.forEach((h, j) => { row[h] = values[j] ?? ''; });
-      rows.push(row);
-    }
-    return rows;
-  };
-
-  const handleImportFile: UploadProps['customRequest'] = (options) => {
-    const file = options.file as File;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = reader.result as string;
-        const rows = parseCSV(text);
-        const required = ['name', 'category', 'unit', 'quantity', 'reorderlevel', 'price', 'costprice'];
-        const first = rows[0] ?? {};
-        const keys = Object.keys(first);
-        const hasHeaders = rows.length > 0 && required.every((k) => keys.some((x) => x.toLowerCase() === k));
-        const norm = (r: Record<string, string>, key: string) => {
-          const k = Object.keys(r).find((x) => x.toLowerCase() === key.toLowerCase());
-          return k ? (r[k] ?? '').trim() : '';
-        };
-        let added = 0;
-        for (const r of rows) {
-          const name = norm(r, 'name');
-          if (!name) continue;
-          const quantity = parseInt(norm(r, 'quantity'), 10) || 0;
-          const reorderLevel = parseInt(norm(r, 'reorderlevel'), 10) || 0;
-          const price = parseFloat(norm(r, 'price')) || 0;
-          const costPrice = parseFloat(norm(r, 'costprice')) || 0;
-          const unit = norm(r, 'unit') || 'units';
-          const category = norm(r, 'category') || 'Groceries';
-          const sku = norm(r, 'sku');
-          addProduct({
-            name,
-            category,
-            unit,
-            quantity,
-            reorderLevel,
-            price,
-            costPrice,
-            sku: sku || undefined,
-            image: null,
-          });
-          added++;
-        }
-        message.success(`Imported ${added} product(s).`);
-        setImportOpen(false);
-      } catch (e) {
-        message.error('Failed to parse CSV. Use columns: name, category, unit, quantity, reorderLevel, price, costPrice, sku');
-      }
-      options.onSuccess?.(undefined);
-    };
-    reader.readAsText(file);
-  };
-
   const columns: TableProps<Product>['columns'] = [
     {
       title: 'Item',
@@ -197,13 +216,20 @@ export default function InventoryPage() {
       width: 220,
       render: (_, record) => (
         <Space align="center" size="middle">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-            <InboxOutlined className="text-lg" />
+          <div className="flex h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={productImageSrc(record.image)}
+              alt=""
+              className="h-full w-full object-contain p-0.5"
+            />
           </div>
           <div>
             <Text strong>{record.name}</Text>
             <br />
-            <Text type="secondary" className="text-xs">{record.category}</Text>
+            <Text type="secondary" className="text-xs">
+              {record.category}
+            </Text>
           </div>
         </Space>
       ),
@@ -223,7 +249,9 @@ export default function InventoryPage() {
       align: 'right',
       sorter: (a, b) => a.quantity - b.quantity,
       render: (quantity: number, record) => (
-        <Text strong>{quantity} {record.unit}</Text>
+        <Text strong>
+          {quantity} {record.unit}
+        </Text>
       ),
     },
     {
@@ -233,7 +261,9 @@ export default function InventoryPage() {
       width: 110,
       align: 'right',
       render: (reorderLevel: number, record) => (
-        <Text type="secondary">{reorderLevel} {record.unit}</Text>
+        <Text type="secondary">
+          {reorderLevel} {record.unit}
+        </Text>
       ),
     },
     {
@@ -242,7 +272,11 @@ export default function InventoryPage() {
       width: 110,
       render: (_: unknown, record: Product) => {
         const status = getStockStatus(record.quantity, record.reorderLevel);
-        const config = { Good: { color: 'green', text: 'In stock' }, Low: { color: 'orange', text: 'Low stock' }, Out: { color: 'red', text: 'Out of stock' } };
+        const config = {
+          Good: { color: 'green', text: 'In stock' },
+          Low: { color: 'orange', text: 'Low stock' },
+          Out: { color: 'red', text: 'Out of stock' },
+        };
         return <Tag color={config[status].color}>{config[status].text}</Tag>;
       },
     },
@@ -260,7 +294,12 @@ export default function InventoryPage() {
       render: (_, record) => (
         <Space size="small">
           <Tooltip title="Edit">
-            <Button type="text" icon={<EditOutlined />} onClick={() => handleOpen(record)} className="text-teal-600 hover:!text-teal-700 hover:!bg-teal-50" />
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => handleOpen(record)}
+              className="text-[#25395c] hover:!text-[#1a2842] hover:!bg-[#25395c]/10"
+            />
           </Tooltip>
           <Tooltip title="Delete">
             <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.id)} />
@@ -275,36 +314,40 @@ export default function InventoryPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Title level={4} className="!mb-1 !font-bold !text-slate-800">Inventory</Title>
-            <Text type="secondary">Add new products and track stock; they appear in Products and POS</Text>
+            <Title level={4} className="!mb-1 !font-bold !text-slate-800">
+              Inventory
+            </Title>
+            <Text type="secondary">
+              Add products with photos, bulk import from Excel/CSV, and track stock levels
+            </Text>
           </div>
           <Space size="middle" wrap>
             <Button
               size="large"
               icon={<UploadOutlined />}
               onClick={() => setImportOpen(true)}
-              className="!border-teal-600 !text-teal-600 hover:!border-teal-700 hover:!text-teal-700"
+              className="!border-[#25395c] !text-[#25395c] hover:!border-[#1a2842] hover:!text-[#1a2842]"
             >
-              Import
+              Bulk import
             </Button>
             <Button
               type="primary"
               size="large"
               icon={<PlusOutlined />}
               onClick={() => handleOpen()}
-              className="!bg-teal-600 !border-teal-600 hover:!bg-teal-700 hover:!border-teal-700"
+              className="!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842] hover:!border-[#1a2842]"
             >
               Add product / stock item
             </Button>
           </Space>
         </div>
 
-        <Card className="shadow-sm" styles={{ body: { padding: 0 } }}>
+        <Card className="shadow-sm" loading={productsLoading} styles={{ body: { padding: 0 } }}>
           <div className="inventory-table-toolbar flex flex-col gap-4 border-b border-slate-100 bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
               <div className="w-full min-w-0 sm:w-72 sm:min-w-[260px]">
                 <Input
-                  placeholder="Search by name or category..."
+                  placeholder="Search by name, category, or SKU..."
                   prefix={<SearchOutlined className="text-slate-400" />}
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
@@ -337,7 +380,12 @@ export default function InventoryPage() {
             columns={columns}
             dataSource={filteredItems}
             rowKey="id"
-            pagination={{ showSizeChanger: true, showTotal: (t) => `Total ${t} items`, pageSizeOptions: ['10', '20', '50'], defaultPageSize: 10 }}
+            pagination={{
+              showSizeChanger: true,
+              showTotal: (t) => `Total ${t} items`,
+              pageSizeOptions: ['10', '20', '50'],
+              defaultPageSize: 10,
+            }}
             size="middle"
             scroll={{ x: 900 }}
           />
@@ -353,67 +401,46 @@ export default function InventoryPage() {
         cancelText="Cancel"
         width={520}
         style={{ maxWidth: '95vw' }}
-        destroyOnClose
-        okButtonProps={{ className: '!bg-teal-600 !border-teal-600 hover:!bg-teal-700' }}
+        destroyOnHidden
+        okButtonProps={{ className: '!bg-[#25395c] !border-[#25395c] hover:!bg-[#1a2842]' }}
       >
         <Form form={form} layout="vertical" className="mt-4" requiredMark={false}>
           <Form.Item label="Product image" name="image">
             <ImageUpload />
           </Form.Item>
-
           <Form.Item
             name="name"
             label="Product name"
             rules={[{ required: true, message: 'Please enter product name' }]}
           >
-            <Input placeholder="e.g. Milk 1L" size="large" />
+            <Input placeholder="e.g. LED Bulb 9W" size="large" />
           </Form.Item>
-
           <Form.Item
-            name="category"
+            name="categoryId"
             label="Category"
             rules={[{ required: true, message: 'Please select a category' }]}
           >
             <Select
               placeholder="Select category"
               size="large"
-              options={categories.map((c) => ({ label: c, value: c }))}
+              options={categoryOptions.map((c) => ({ label: c.name, value: c.id }))}
             />
           </Form.Item>
-
           <Form.Item name="description" label="Description">
             <TextArea rows={3} placeholder="Optional product description" />
           </Form.Item>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item
               name="price"
               label="Selling price (GHS)"
               rules={[{ required: true, message: 'Required' }]}
             >
-              <InputNumber
-                min={0}
-                step={0.01}
-                className="w-full"
-                size="large"
-                addonBefore="GHS"
-              />
+              <InputNumber min={0} step={0.01} className="w-full" size="large" addonBefore="GHS" />
             </Form.Item>
-            <Form.Item
-              name="costPrice"
-              label="Cost price (GHS)"
-              rules={[{ required: true, message: 'Required' }]}
-            >
-              <InputNumber
-                min={0}
-                step={0.01}
-                className="w-full"
-                size="large"
-                addonBefore="GHS"
-              />
+            <Form.Item name="costPrice" label="Cost price (GHS)">
+              <InputNumber min={0} step={0.01} className="w-full" size="large" addonBefore="GHS" />
             </Form.Item>
           </div>
-
           <Form.Item name="unit" label="Unit" rules={[{ required: true, message: 'Select unit' }]}>
             <Select
               placeholder="Select unit"
@@ -421,46 +448,64 @@ export default function InventoryPage() {
               options={units.map((u) => ({ label: u, value: u }))}
             />
           </Form.Item>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Form.Item name="quantity" label="Stock quantity" rules={[{ required: true, message: 'Required' }]}>
+            <Form.Item
+              name="quantity"
+              label="Stock quantity"
+              rules={[{ required: true, message: 'Required' }]}
+            >
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
-            <Form.Item name="reorderLevel" label="Reorder at (alert when below)" rules={[{ required: true, message: 'Required' }]}>
+            <Form.Item
+              name="reorderLevel"
+              label="Reorder at (alert when below)"
+              rules={[{ required: true, message: 'Required' }]}
+            >
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
           </div>
-
-          <Form.Item name="sku" label="SKU / Barcode">
-            <Input placeholder="e.g. MLK-001" size="large" />
+          <Form.Item name="sku" label="SKU / Barcode (optional)">
+            <Input placeholder="e.g. LED-009" size="large" />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Import products"
+        title="Bulk import products"
         open={importOpen}
         onCancel={() => setImportOpen(false)}
         footer={null}
-        width={480}
+        width={520}
         style={{ maxWidth: '95vw' }}
-        destroyOnClose
+        destroyOnHidden
       >
         <div className="py-2">
           <Text type="secondary" className="block mb-4">
-            Upload a CSV with columns: <strong>name</strong>, <strong>category</strong>, <strong>unit</strong>, <strong>quantity</strong>, <strong>reorderLevel</strong>, <strong>price</strong>, <strong>costPrice</strong>, <strong>sku</strong> (optional). First row should be headers.
+            Upload an Excel (.xlsx) or CSV file. Required columns:{' '}
+            <strong>name, category, unit, quantity, reorderLevel, price, costPrice</strong>. Optional:{' '}
+            <strong>sku, description</strong>. New categories are created automatically.
           </Text>
+          <Button
+            icon={<DownloadOutlined />}
+            className="mb-4"
+            onClick={downloadProductTemplate}
+          >
+            Download Excel template
+          </Button>
           <Upload.Dragger
-            accept=".csv"
+            accept=".csv,.xlsx,.xls"
             maxCount={1}
             showUploadList={false}
+            disabled={importing}
             customRequest={handleImportFile}
           >
             <p className="ant-upload-drag-icon">
-              <InboxOutlined className="text-4xl text-teal-500" />
+              <InboxOutlined className="text-4xl text-[#25395c]" />
             </p>
-            <p className="ant-upload-text">Click or drag a CSV file here</p>
-            <p className="ant-upload-hint">One product per row after the header</p>
+            <p className="ant-upload-text">
+              {importing ? 'Importing…' : 'Click or drag Excel / CSV file here'}
+            </p>
+            <p className="ant-upload-hint">One product per row after the header row</p>
           </Upload.Dragger>
         </div>
       </Modal>

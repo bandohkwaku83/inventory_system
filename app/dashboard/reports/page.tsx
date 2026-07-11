@@ -1,28 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Card,
-  Select,
   Button,
   Table,
   Typography,
-  Space,
   DatePicker,
+  Segmented,
+  Tag,
+  Empty,
 } from 'antd';
 import type { TableProps } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek';
 import {
-  BarChartOutlined,
-  LineChartOutlined,
   DownloadOutlined,
-  FilePdfOutlined,
-  RiseOutlined,
-  DollarOutlined,
+  WalletOutlined,
+  MobileOutlined,
   ShoppingOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import {
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   XAxis,
@@ -30,363 +29,587 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from 'recharts';
 import DashboardLayout from '../../components/DashboardLayout';
+import { useSales, type Sale, type SalePaymentMethod } from '../../context/SalesContext';
+
+dayjs.extend(isoWeek);
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
-type RangeValue = React.ComponentProps<typeof RangePicker>['value'];
 
-const reportTypes = [
-  { value: 'daily', label: 'Daily Sales' },
-  { value: 'monthly', label: 'Monthly Sales' },
-  { value: 'top', label: 'Top Selling Items' },
-];
+const CASH_COLOR = '#1a2842';
+const MOMO_COLOR = '#f59e0b';
 
-interface DailySalesData {
-  date: string;
-  sales: number;
-  profit: number;
+const currency = (v: number) =>
+  `GHS ${v.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+type Period = 'day' | 'week' | 'month';
+type MethodFilter = 'all' | SalePaymentMethod;
+
+function periodRange(period: Period, anchor: Dayjs): [Dayjs, Dayjs] {
+  switch (period) {
+    case 'day':
+      return [anchor.startOf('day'), anchor.endOf('day')];
+    case 'week':
+      return [anchor.startOf('isoWeek'), anchor.endOf('isoWeek')];
+    case 'month':
+    default:
+      return [anchor.startOf('month'), anchor.endOf('month')];
+  }
 }
 
-interface MonthlySalesData {
-  month: string;
-  sales: number;
-  profit: number;
+function buildBuckets(
+  sales: Sale[],
+  period: Period,
+  anchor: Dayjs
+): { key: string; label: string; cash: number; momo: number }[] {
+  const [start, end] = periodRange(period, anchor);
+
+  if (period === 'day') {
+    // hourly buckets
+    const buckets = Array.from({ length: 24 }, (_, i) => ({
+      key: String(i),
+      label: dayjs().hour(i).minute(0).format('HH:mm'),
+      cash: 0,
+      momo: 0,
+    }));
+    sales.forEach((s) => {
+      const d = dayjs(s.timestamp);
+      if (d.isBefore(start) || d.isAfter(end)) return;
+      const b = buckets[d.hour()];
+      if (s.paymentMethod === 'Cash') b.cash += s.total;
+      else b.momo += s.total;
+    });
+    return buckets;
+  }
+
+  if (period === 'week') {
+    // 7 daily buckets Mon-Sun
+    const buckets = Array.from({ length: 7 }, (_, i) => {
+      const d = start.add(i, 'day');
+      return { key: d.format('YYYY-MM-DD'), label: d.format('ddd D'), cash: 0, momo: 0 };
+    });
+    const map = new Map(buckets.map((b) => [b.key, b]));
+    sales.forEach((s) => {
+      const d = dayjs(s.timestamp);
+      if (d.isBefore(start) || d.isAfter(end)) return;
+      const b = map.get(d.format('YYYY-MM-DD'));
+      if (!b) return;
+      if (s.paymentMethod === 'Cash') b.cash += s.total;
+      else b.momo += s.total;
+    });
+    return buckets;
+  }
+
+  // month → daily buckets
+  const daysInMonth = anchor.daysInMonth();
+  const buckets = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = anchor.startOf('month').add(i, 'day');
+    return { key: d.format('YYYY-MM-DD'), label: d.format('D'), cash: 0, momo: 0 };
+  });
+  const map = new Map(buckets.map((b) => [b.key, b]));
+  sales.forEach((s) => {
+    const d = dayjs(s.timestamp);
+    if (d.isBefore(start) || d.isAfter(end)) return;
+    const b = map.get(d.format('YYYY-MM-DD'));
+    if (!b) return;
+    if (s.paymentMethod === 'Cash') b.cash += s.total;
+    else b.momo += s.total;
+  });
+  return buckets;
 }
-
-interface TopSellingItem {
-  name: string;
-  quantity: number;
-  revenue: number;
-}
-
-const dailySalesData: DailySalesData[] = [
-  { date: 'Jan 8', sales: 2400, profit: 1200 },
-  { date: 'Jan 9', sales: 1398, profit: 699 },
-  { date: 'Jan 10', sales: 9800, profit: 4900 },
-  { date: 'Jan 11', sales: 3908, profit: 1954 },
-  { date: 'Jan 12', sales: 4800, profit: 2400 },
-  { date: 'Jan 13', sales: 3800, profit: 1900 },
-  { date: 'Jan 14', sales: 4300, profit: 2150 },
-];
-
-const monthlySalesData: MonthlySalesData[] = [
-  { month: 'Jan', sales: 45000, profit: 22500 },
-  { month: 'Feb', sales: 52000, profit: 26000 },
-  { month: 'Mar', sales: 48000, profit: 24000 },
-  { month: 'Apr', sales: 55000, profit: 27500 },
-  { month: 'May', sales: 60000, profit: 30000 },
-  { month: 'Jun', sales: 58000, profit: 29000 },
-];
-
-const topSellingItems: TopSellingItem[] = [
-  { name: 'Milk 1L', quantity: 450, revenue: 3150 },
-  { name: 'Bread (Loaf)', quantity: 380, revenue: 1900 },
-  { name: 'Rice 2kg', quantity: 320, revenue: 4800 },
-  { name: 'Cooking Oil 1L', quantity: 280, revenue: 3920 },
-  { name: 'Soft Drinks 500ml', quantity: 250, revenue: 1250 },
-];
-
-const totalSales = dailySalesData.reduce((s, d) => s + d.sales, 0);
-const totalProfit = dailySalesData.reduce((s, d) => s + d.profit, 0);
-
-const topSellingItemsColumns: TableProps<TopSellingItem>['columns'] = [
-  {
-    title: 'Product',
-    dataIndex: 'name',
-    key: 'name',
-    render: (name: string) => <Text strong>{name}</Text>,
-  },
-  {
-    title: 'Quantity sold',
-    dataIndex: 'quantity',
-    key: 'quantity',
-    align: 'right',
-    render: (q: number) => <Text>{q.toLocaleString()}</Text>,
-  },
-  {
-    title: 'Revenue',
-    dataIndex: 'revenue',
-    key: 'revenue',
-    align: 'right',
-    render: (r: number) => (
-      <Text strong className="text-teal-600">GHS {r.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-    ),
-  },
-];
-
-const salesDataColumns: TableProps<DailySalesData | MonthlySalesData>['columns'] = [
-  {
-    title: 'Period',
-    key: 'period',
-    dataIndex: 'date',
-    render: (_: unknown, r: DailySalesData | MonthlySalesData) =>
-      'month' in r ? r.month : r.date,
-  },
-  {
-    title: 'Sales',
-    dataIndex: 'sales',
-    key: 'sales',
-    align: 'right',
-    render: (s: number) => (
-      <Text strong className="text-slate-800">GHS {s.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-    ),
-  },
-  {
-    title: 'Profit',
-    dataIndex: 'profit',
-    key: 'profit',
-    align: 'right',
-    render: (p: number) => (
-      <Text strong className="text-emerald-600">GHS {p.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
-    ),
-  },
-];
 
 export default function ReportsPage() {
-  const [reportType, setReportType] = useState<string>('daily');
-  const [dateRange, setDateRange] = useState<RangeValue>(null);
+  const { sales } = useSales();
 
-  const handleExport = (format: 'pdf' | 'excel') => {
-    const label = reportTypes.find((r) => r.value === reportType)?.label ?? reportType;
-    alert(`Exporting ${label} as ${format.toUpperCase()}...`);
+  const [period, setPeriod] = useState<Period>('day');
+  const [anchor, setAnchor] = useState<Dayjs>(dayjs());
+  const [methodFilter, setMethodFilter] = useState<MethodFilter>('all');
+
+  const [start, end] = periodRange(period, anchor);
+
+  const periodSales = useMemo(
+    () =>
+      sales
+        .filter((s) => {
+          const d = dayjs(s.timestamp);
+          return !d.isBefore(start) && !d.isAfter(end);
+        })
+        .sort(
+          (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf()
+        ),
+    [sales, start, end]
+  );
+
+  const cashSales = useMemo(
+    () => periodSales.filter((s) => s.paymentMethod === 'Cash'),
+    [periodSales]
+  );
+  const momoSales = useMemo(
+    () => periodSales.filter((s) => s.paymentMethod === 'Mobile Money'),
+    [periodSales]
+  );
+
+  const cashTotal = cashSales.reduce((s, x) => s + x.total, 0);
+  const momoTotal = momoSales.reduce((s, x) => s + x.total, 0);
+  const grandTotal = cashTotal + momoTotal;
+  const txCount = periodSales.length;
+
+  const buckets = useMemo(
+    () => buildBuckets(periodSales, period, anchor),
+    [periodSales, period, anchor]
+  );
+
+  const filteredTable = useMemo(() => {
+    if (methodFilter === 'all') return periodSales;
+    return periodSales.filter((s) => s.paymentMethod === methodFilter);
+  }, [periodSales, methodFilter]);
+
+  const periodLabel = useMemo(() => {
+    if (period === 'day') return anchor.format('dddd, MMM D, YYYY');
+    if (period === 'week')
+      return `${start.format('MMM D')} – ${end.format('MMM D, YYYY')}`;
+    return anchor.format('MMMM YYYY');
+  }, [period, anchor, start, end]);
+
+  const shiftAnchor = (dir: -1 | 1) => {
+    if (period === 'day') setAnchor(anchor.add(dir, 'day'));
+    else if (period === 'week') setAnchor(anchor.add(dir, 'week'));
+    else setAnchor(anchor.add(dir, 'month'));
   };
 
-  const chartData = reportType === 'top' ? topSellingItems : reportType === 'monthly' ? monthlySalesData : dailySalesData;
-  const xKey = reportType === 'top' ? 'name' : reportType === 'monthly' ? 'month' : 'date';
+  const handleExport = () => {
+    const header = [
+      'Receipt',
+      'Date',
+      'Time',
+      'Customer',
+      'Payment method',
+      'Items',
+      'Subtotal',
+      'Discount',
+      'Total',
+    ];
+    const rows = filteredTable.map((s) => [
+      s.id,
+      s.date,
+      s.time,
+      s.customer,
+      s.paymentMethod,
+      s.items.reduce((n, it) => n + it.quantity, 0),
+      s.subtotal.toFixed(2),
+      s.discount.toFixed(2),
+      s.total.toFixed(2),
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sales-${period}-${anchor.format('YYYY-MM-DD')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const columns: TableProps<Sale>['columns'] = [
+    {
+      title: 'Receipt',
+      dataIndex: 'id',
+      key: 'id',
+      width: 160,
+      render: (id: string) => <Text className="font-mono text-[12px]">{id}</Text>,
+    },
+    {
+      title: 'Date / Time',
+      key: 'datetime',
+      width: 160,
+      render: (_, r) => (
+        <div className="leading-tight">
+          <div className="text-[13px] font-semibold text-slate-800">
+            {dayjs(r.timestamp).format('MMM D, YYYY')}
+          </div>
+          <div className="text-[11px] text-slate-500">{r.time}</div>
+        </div>
+      ),
+    },
+    {
+      title: 'Customer',
+      dataIndex: 'customer',
+      key: 'customer',
+      render: (v: string) => (
+        <span className="text-[13px] text-slate-700">{v || 'Walk-in'}</span>
+      ),
+    },
+    {
+      title: 'Payment',
+      dataIndex: 'paymentMethod',
+      key: 'paymentMethod',
+      width: 160,
+      render: (m: SalePaymentMethod) =>
+        m === 'Cash' ? (
+          <Tag
+            icon={<WalletOutlined />}
+            color="blue"
+            className="!rounded-full !border-[#25395c]/25 !bg-[#25395c]/10 !text-[#25395c]"
+          >
+            Cash
+          </Tag>
+        ) : (
+          <Tag
+            icon={<MobileOutlined />}
+            color="gold"
+            className="!rounded-full !border-amber-200 !bg-amber-50 !text-amber-700"
+          >
+            Mobile Money
+          </Tag>
+        ),
+    },
+    {
+      title: 'Items',
+      key: 'items',
+      width: 90,
+      align: 'center',
+      render: (_, r) => (
+        <span className="text-[13px] text-slate-600">
+          {r.items.reduce((n, it) => n + it.quantity, 0)}
+        </span>
+      ),
+    },
+    {
+      title: 'Total',
+      dataIndex: 'total',
+      key: 'total',
+      width: 140,
+      align: 'right',
+      render: (v: number) => (
+        <span className="text-[14px] font-bold text-[#25395c] tabular-nums">
+          {currency(v)}
+        </span>
+      ),
+      sorter: (a, b) => a.total - b.total,
+    },
+  ];
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Header */}
-        <div>
-          <Title level={4} className="!mb-1 !font-bold !text-slate-800">
-            Reports
-          </Title>
-          <Text type="secondary">View and export sales, profit, and top products</Text>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Title level={4} className="!mb-1 !font-bold !text-slate-800">
+              Sales reports
+            </Title>
+            <Text type="secondary" className="block text-sm">
+              See sales taken with Cash and Mobile Money for any day, week, or month.
+            </Text>
+          </div>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleExport}
+            disabled={filteredTable.length === 0}
+            className="!bg-[#25395c] hover:!bg-[#1a2842]"
+          >
+            Export CSV
+          </Button>
         </div>
 
-        {/* Toolbar: report type + date range + export */}
-        <Card className="shadow-sm" styles={{ body: { padding: '1rem 1.25rem' } }}>
-          <div className="reports-toolbar flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-              <Select
-                value={reportType}
-                onChange={setReportType}
-                options={reportTypes}
-                className="!w-full sm:!w-[180px] min-w-0"
-                size="large"
-                suffixIcon={reportType === 'top' ? <BarChartOutlined /> : <LineChartOutlined />}
-              />
-              <RangePicker
-                value={dateRange}
-                onChange={(v) => setDateRange(v)}
-                size="large"
-                className="!w-full sm:!w-[260px]"
-                placeholder={['Start date', 'End date']}
-              />
+        {/* Period toolbar */}
+        <Card className="shadow-sm" styles={{ body: { padding: '0.9rem 1rem' } }}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <Segmented<Period>
+              value={period}
+              onChange={(v) => setPeriod(v)}
+              options={[
+                { label: 'Day', value: 'day' },
+                { label: 'Week', value: 'week' },
+                { label: 'Month', value: 'month' },
+              ]}
+              className="!bg-slate-100"
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => shiftAnchor(-1)}>←</Button>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-center text-[13px] font-semibold text-slate-700 min-w-[220px]">
+                {periodLabel}
+              </div>
+              <Button onClick={() => shiftAnchor(1)}>→</Button>
+
+              {period === 'day' && (
+                <DatePicker
+                  value={anchor}
+                  onChange={(v) => v && setAnchor(v)}
+                  allowClear={false}
+                />
+              )}
+              {period === 'week' && (
+                <DatePicker
+                  picker="week"
+                  value={anchor}
+                  onChange={(v) => v && setAnchor(v)}
+                  allowClear={false}
+                />
+              )}
+              {period === 'month' && (
+                <DatePicker
+                  picker="month"
+                  value={anchor}
+                  onChange={(v) => v && setAnchor(v)}
+                  allowClear={false}
+                />
+              )}
+
+              <Button
+                onClick={() => setAnchor(dayjs())}
+                type="text"
+                className="!text-[#25395c]"
+              >
+                Today
+              </Button>
             </div>
-            <Space size="middle" wrap className="w-full sm:w-auto">
-              <Button
-                icon={<FilePdfOutlined />}
-                size="large"
-                onClick={() => handleExport('pdf')}
-                className="!border-slate-300 !text-slate-700 hover:!border-teal-400 hover:!text-teal-600"
-              >
-                PDF
-              </Button>
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                size="large"
-                onClick={() => handleExport('excel')}
-                className="!bg-teal-600 !border-teal-600 hover:!bg-teal-700 hover:!border-teal-700"
-              >
-                Excel
-              </Button>
-            </Space>
           </div>
         </Card>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="shadow-sm overflow-hidden" styles={{ body: { padding: '1.25rem' } }}>
-            <div className="flex items-start justify-between">
-              <div>
-                <Text type="secondary" className="text-xs uppercase tracking-wide">Total sales (period)</Text>
-                <p className="mt-1 text-xl font-bold text-slate-800">
-                  GHS {totalSales.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-600">
-                <ShoppingOutlined className="text-lg" />
-              </div>
-            </div>
-          </Card>
-          <Card className="shadow-sm overflow-hidden" styles={{ body: { padding: '1.25rem' } }}>
-            <div className="flex items-start justify-between">
-              <div>
-                <Text type="secondary" className="text-xs uppercase tracking-wide">Total profit (period)</Text>
-                <p className="mt-1 text-xl font-bold text-emerald-600">
-                  GHS {totalProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-                <RiseOutlined className="text-lg" />
-              </div>
-            </div>
-          </Card>
-          <Card className="shadow-sm overflow-hidden" styles={{ body: { padding: '1.25rem' } }}>
-            <div className="flex items-start justify-between">
-              <div>
-                <Text type="secondary" className="text-xs uppercase tracking-wide">Margin</Text>
-                <p className="mt-1 text-xl font-bold text-slate-800">
-                  {totalSales > 0 ? ((totalProfit / totalSales) * 100).toFixed(1) : 0}%
-                </p>
-              </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-                <DollarOutlined className="text-lg" />
-              </div>
-            </div>
-          </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard
+            label="Total sales"
+            value={currency(grandTotal)}
+            icon={<ShoppingOutlined />}
+            iconBg="bg-slate-100"
+            iconColor="text-slate-600"
+            sub={`${txCount} transaction${txCount !== 1 ? 's' : ''}`}
+          />
+          <SummaryCard
+            label="Cash"
+            value={currency(cashTotal)}
+            icon={<WalletOutlined />}
+            iconBg="bg-[#25395c]/15"
+            iconColor="text-[#25395c]"
+            sub={`${cashSales.length} sale${cashSales.length !== 1 ? 's' : ''}`}
+            accent="text-[#25395c]"
+            share={grandTotal > 0 ? (cashTotal / grandTotal) * 100 : 0}
+            shareColor={CASH_COLOR}
+          />
+          <SummaryCard
+            label="Mobile Money"
+            value={currency(momoTotal)}
+            icon={<MobileOutlined />}
+            iconBg="bg-amber-100"
+            iconColor="text-amber-700"
+            sub={`${momoSales.length} sale${momoSales.length !== 1 ? 's' : ''}`}
+            accent="text-amber-700"
+            share={grandTotal > 0 ? (momoTotal / grandTotal) * 100 : 0}
+            shareColor={MOMO_COLOR}
+          />
+          <SummaryCard
+            label="Avg. transaction"
+            value={currency(txCount > 0 ? grandTotal / txCount : 0)}
+            icon={<AppstoreOutlined />}
+            iconBg="bg-[#25395c]/15"
+            iconColor="text-[#25395c]"
+            sub={
+              period === 'day'
+                ? 'Today'
+                : period === 'week'
+                ? 'This week'
+                : 'This month'
+            }
+          />
         </div>
 
         {/* Chart */}
-        <Card className="shadow-sm" styles={{ body: { padding: '1.5rem' } }}>
-          <h3 className="mb-4 text-sm font-bold text-slate-800">
-            {reportTypes.find((r) => r.value === reportType)?.label} — Overview
-          </h3>
-          {reportType === 'top' ? (
-            <ResponsiveContainer width="100%" height={340}>
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 60 }}>
-                <defs>
-                  <linearGradient id="barTeal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
-                  </linearGradient>
-                  <linearGradient id="barEmerald" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="#059669" stopOpacity={0.7} />
-                  </linearGradient>
-                </defs>
+        <Card className="shadow-sm" styles={{ body: { padding: '1.25rem' } }}>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-800">
+              Sales breakdown —{' '}
+              <span className="text-slate-500 font-medium">
+                {period === 'day'
+                  ? 'by hour'
+                  : period === 'week'
+                  ? 'by day'
+                  : 'by day of month'}
+              </span>
+            </h3>
+          </div>
+          {grandTotal === 0 ? (
+            <div className="flex h-[280px] items-center justify-center">
+              <Empty
+                description="No sales in this period"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={buckets}
+                margin={{ top: 10, right: 10, left: 0, bottom: 10 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                 <XAxis
-                  dataKey={xKey}
-                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                   axisLine={false}
                   tickLine={false}
-                  angle={-35}
-                  textAnchor="end"
-                  height={70}
+                  interval="preserveStartEnd"
                 />
                 <YAxis
-                  tick={{ fontSize: 12, fill: '#64748b' }}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
                   axisLine={false}
                   tickLine={false}
-                  tickFormatter={(v: number) => (v >= 1000 ? `${v / 1000}k` : String(v))}
+                  tickFormatter={(v: number) =>
+                    v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+                  }
                 />
                 <Tooltip
                   contentStyle={{
-                    borderRadius: 12,
+                    borderRadius: 10,
                     border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+                    fontSize: 12,
                   }}
                   formatter={(value: number, name: string) => [
-                    name === 'quantity' ? value : `GHS ${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-                    name === 'quantity' ? 'Quantity sold' : 'Revenue (GHS)',
+                    currency(value),
+                    name,
                   ]}
                 />
-                <Bar dataKey="quantity" fill="url(#barTeal)" name="quantity" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="revenue" fill="url(#barEmerald)" name="revenue" radius={[6, 6, 0, 0]} />
+                <Legend
+                  wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                  iconType="circle"
+                />
+                <Bar
+                  dataKey="cash"
+                  name="Cash"
+                  stackId="a"
+                  fill={CASH_COLOR}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  dataKey="momo"
+                  name="Mobile Money"
+                  stackId="a"
+                  fill={MOMO_COLOR}
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <ResponsiveContainer width="100%" height={340}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="areaSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#14b8a6" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="areaProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis
-                  dataKey={xKey}
-                  tick={{ fontSize: 12, fill: '#64748b' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 12, fill: '#64748b' }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v: number) => (v >= 1000 ? `GHS ${(v / 1000).toFixed(0)}k` : `GHS ${v}`)}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: 12,
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                  }}
-                  formatter={(value: number) => [`GHS ${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, '']}
-                  labelFormatter={(label) => `Period: ${label}`}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#14b8a6"
-                  strokeWidth={2}
-                  fill="url(#areaSales)"
-                  name="Sales"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="profit"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  fill="url(#areaProfit)"
-                  name="Profit"
-                />
-              </AreaChart>
             </ResponsiveContainer>
           )}
         </Card>
 
-        {/* Data table */}
+        {/* Transactions table */}
         <Card className="shadow-sm" styles={{ body: { padding: 0 } }}>
-          <div className="border-b border-slate-100 px-5 py-4">
+          <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-sm font-bold text-slate-800">
-              {reportTypes.find((r) => r.value === reportType)?.label} — Data
+              Transactions
+              <span className="ml-2 text-[12px] font-medium text-slate-500">
+                {filteredTable.length} shown
+              </span>
             </h3>
+            <Segmented<MethodFilter>
+              value={methodFilter}
+              onChange={(v) => setMethodFilter(v)}
+              options={[
+                { label: 'All', value: 'all' },
+                { label: 'Cash', value: 'Cash' },
+                { label: 'Mobile Money', value: 'Mobile Money' },
+              ]}
+              size="small"
+            />
           </div>
           <div className="p-3">
-            {reportType === 'top' ? (
-              <Table<TopSellingItem>
-                columns={topSellingItemsColumns}
-                dataSource={topSellingItems}
-                rowKey="name"
-                pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} items` }}
-                size="middle"
-                scroll={{ x: 400 }}
-              />
-            ) : (
-              <Table<DailySalesData | MonthlySalesData>
-                columns={salesDataColumns}
-                dataSource={(reportType === 'monthly' ? monthlySalesData : dailySalesData) as (DailySalesData | MonthlySalesData)[]}
-                rowKey={reportType === 'monthly' ? 'month' : 'date'}
-                pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `Total ${t} rows` }}
-                size="middle"
-                scroll={{ x: 400 }}
-              />
-            )}
+            <Table<Sale>
+              columns={columns}
+              dataSource={filteredTable}
+              rowKey="id"
+              pagination={{ pageSize: 10, showSizeChanger: true }}
+              size="middle"
+              scroll={{ x: 720 }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    description="No transactions"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  />
+                ),
+              }}
+            />
           </div>
         </Card>
       </div>
     </DashboardLayout>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  icon,
+  iconBg,
+  iconColor,
+  accent,
+  share,
+  shareColor,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  accent?: string;
+  share?: number;
+  shareColor?: string;
+}) {
+  return (
+    <Card className="shadow-sm" styles={{ body: { padding: '1.1rem 1.15rem' } }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Text
+            type="secondary"
+            className="block text-[10.5px] font-semibold uppercase tracking-wider"
+          >
+            {label}
+          </Text>
+          <p
+            className={`mt-1 mb-0 truncate text-[20px] font-bold leading-tight ${
+              accent ?? 'text-slate-800'
+            }`}
+          >
+            {value}
+          </p>
+          {sub && (
+            <div className="mt-1 text-[11.5px] text-slate-500">{sub}</div>
+          )}
+        </div>
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg} ${iconColor}`}
+        >
+          <span className="text-lg">{icon}</span>
+        </div>
+      </div>
+      {typeof share === 'number' && (
+        <div className="mt-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.max(0, Math.min(100, share))}%`,
+                backgroundColor: shareColor ?? '#1a2842',
+              }}
+            />
+          </div>
+          <div className="mt-1 text-right text-[10.5px] font-semibold text-slate-500">
+            {share.toFixed(0)}% of total
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

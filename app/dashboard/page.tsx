@@ -1,21 +1,23 @@
 'use client';
 
-import React from 'react';
-import { Table } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Spin, Table } from 'antd';
 import type { TableProps } from 'antd';
 import Link from 'next/link';
 import {
-  TrendingUp,
-  Inventory2,
-  Warning,
-  ShoppingCart,
-  ArrowUpward,
-  ArrowDownward,
-  Remove,
+  Inventory2 as InventoryIcon,
   Receipt as ReceiptIcon,
   LocalShipping as LocalShippingIcon,
   PointOfSale as PointOfSaleIcon,
-  List as ListIcon,
+  AttachMoney as AttachMoneyIcon,
+  PeopleAlt as PeopleAltIcon,
+  Assessment as AssessmentIcon,
+  Add as AddIcon,
+  Description as DescriptionIcon,
+  AccountBalanceWallet as WalletIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  ArrowForward as ArrowForwardIcon,
 } from '@mui/icons-material';
 import {
   BarChart,
@@ -29,167 +31,61 @@ import {
   AreaChart,
 } from 'recharts';
 import DashboardLayout from '../components/DashboardLayout';
-import { useAuth } from '../context/AuthContext';
+import {
+  fetchDashboard,
+  formatChangePercent,
+  formatDashboardCurrency,
+  type DashboardData,
+} from '../lib/dashboardApi';
 
-const adminMetrics = [
-  {
-    title: 'Total Stock Value',
-    value: 'GHS 45,230',
-    icon: Inventory2,
-    color: '#14b8a6',
-    bgGradient: 'bg-teal-600',
-    change: '+12%',
-    changeType: 'up' as const,
-    subtitle: 'From last month',
-  },
-  {
-    title: "Today's Sales",
-    value: 'GHS 3,450',
-    icon: TrendingUp,
-    color: '#10b981',
-    bgGradient: 'from-emerald-500 to-teal-400',
-    change: '+8%',
-    changeType: 'up' as const,
-    subtitle: 'vs yesterday',
-  },
-  {
-    title: 'Low-Stock Items',
-    value: '5',
-    icon: Warning,
-    color: '#f59e0b',
-    bgGradient: 'from-amber-500 to-yellow-400',
-    change: '-2',
-    changeType: 'down' as const,
-    subtitle: 'Items need restocking',
-  },
-  {
-    title: 'Pending Deliveries',
-    value: '3',
-    icon: ShoppingCart,
-    color: '#ec4899',
-    bgGradient: 'from-pink-500 to-rose-400',
-    change: '0',
-    changeType: 'neutral' as const,
-    subtitle: 'Awaiting fulfillment',
-  },
-];
-
-const salesMetrics = [
-  {
-    title: "Today's Sales",
-    value: 'GHS 3,450',
-    icon: TrendingUp,
-    color: '#10b981',
-    bgGradient: 'from-emerald-500 to-teal-400',
-    change: '+8%',
-    changeType: 'up' as const,
-    subtitle: 'vs yesterday',
-  },
-  {
-    title: 'Transactions Today',
-    value: '24',
-    icon: ReceiptIcon,
-    color: '#14b8a6',
-    bgGradient: 'bg-teal-600',
-    change: '+5',
-    changeType: 'up' as const,
-    subtitle: 'Completed sales',
-  },
-  {
-    title: "This Week",
-    value: 'GHS 18,200',
-    icon: PointOfSaleIcon,
-    color: '#6366f1',
-    bgGradient: 'from-indigo-500 to-violet-400',
-    change: '+12%',
-    changeType: 'up' as const,
-    subtitle: 'Total sales',
-  },
-  {
-    title: 'Receipts',
-    value: 'All',
-    icon: ListIcon,
-    color: '#64748b',
-    bgGradient: 'bg-slate-500',
-    change: '',
-    changeType: 'neutral' as const,
-    subtitle: 'View receipt history',
-  },
-];
-
-const dailySalesData = [
-  { name: 'Mon', sales: 2400, target: 2000 },
-  { name: 'Tue', sales: 1398, target: 2000 },
-  { name: 'Wed', sales: 9800, target: 2000 },
-  { name: 'Thu', sales: 3908, target: 2000 },
-  { name: 'Fri', sales: 4800, target: 2000 },
-  { name: 'Sat', sales: 3800, target: 2000 },
-  { name: 'Sun', sales: 4300, target: 2000 },
-];
-
-const topSellingItems = [
-  { name: 'Milk 1L', sales: 45, revenue: 315 },
-  { name: 'Bread', sales: 38, revenue: 190 },
-  { name: 'Rice 2kg', sales: 32, revenue: 480 },
-  { name: 'Cooking Oil', sales: 28, revenue: 392 },
-  { name: 'Soft Drinks', sales: 25, revenue: 125 },
-];
+const BRAND = '#25395c';
 
 interface RecentSale {
   id: string;
   items: string;
   total: string;
   time: string;
-  status: string;
 }
 
 interface RecentRestock {
+  id: string;
   item: string;
   quantity: string;
   supplier: string;
   date: string;
-  status: string;
 }
-
-const recentSales: RecentSale[] = [
-  { id: 'R001', items: 'Milk x2, Bread x1', total: 'GHS 24.00', time: '2:30 PM', status: 'completed' },
-  { id: 'R002', items: 'Rice x1, Cooking Oil x1', total: 'GHS 31.00', time: '2:15 PM', status: 'completed' },
-  { id: 'R003', items: 'Soft Drinks x3, Snacks x2', total: 'GHS 22.00', time: '1:45 PM', status: 'completed' },
-  { id: 'R004', items: 'Bread x2, Milk x1', total: 'GHS 19.00', time: '1:20 PM', status: 'completed' },
-];
-
-const recentRestocks: RecentRestock[] = [
-  { item: 'Rice', quantity: '50 bags', supplier: 'Wholesale Grocers', date: '2024-01-15', status: 'delivered' },
-  { item: 'Milk', quantity: '100 units', supplier: 'Dairy Co', date: '2024-01-14', status: 'delivered' },
-  { item: 'Bread', quantity: '80 loaves', supplier: 'Bakery Supplies', date: '2024-01-14', status: 'delivered' },
-  { item: 'Cooking Oil', quantity: '24 bottles', supplier: 'Wholesale Grocers', date: '2024-01-13', status: 'delivered' },
-];
 
 const recentSalesColumns: TableProps<RecentSale>['columns'] = [
   {
-    title: 'Receipt ID',
+    title: 'Receipt',
     dataIndex: 'id',
     key: 'id',
-    render: (text: string) => <span className="font-mono font-semibold text-xs">{text}</span>,
+    render: (text: string) => (
+      <span className="font-mono text-[12px] font-semibold text-slate-700">{text}</span>
+    ),
   },
   {
     title: 'Items',
     dataIndex: 'items',
     key: 'items',
-    render: (text: string) => <span className="text-xs">{text}</span>,
+    render: (text: string) => <span className="text-[12px] text-slate-700">{text}</span>,
   },
   {
     title: 'Total',
     dataIndex: 'total',
     key: 'total',
     align: 'right',
-    render: (text: string) => <span className="font-bold text-emerald-600 text-xs">{text}</span>,
+    render: (text: string) => (
+      <span className="text-[12px] font-bold" style={{ color: BRAND }}>
+        {text}
+      </span>
+    ),
   },
   {
     title: 'Time',
     dataIndex: 'time',
     key: 'time',
-    render: (text: string) => <span className="text-xs text-slate-600">{text}</span>,
+    render: (text: string) => <span className="text-[12px] text-slate-500">{text}</span>,
   },
 ];
 
@@ -198,351 +94,567 @@ const recentRestocksColumns: TableProps<RecentRestock>['columns'] = [
     title: 'Item',
     dataIndex: 'item',
     key: 'item',
-    render: (text: string) => <span className="text-xs font-medium">{text}</span>,
+    render: (text: string) => (
+      <span className="text-[12px] font-semibold text-slate-700">{text}</span>
+    ),
   },
   {
     title: 'Quantity',
     dataIndex: 'quantity',
     key: 'quantity',
-    render: (text: string) => <span className="text-xs">{text}</span>,
+    render: (text: string) => <span className="text-[12px] text-slate-700">{text}</span>,
   },
   {
     title: 'Supplier',
     dataIndex: 'supplier',
     key: 'supplier',
-    render: (text: string) => <span className="text-xs text-slate-600">{text}</span>,
+    render: (text: string) => <span className="text-[12px] text-slate-500">{text}</span>,
   },
   {
     title: 'Date',
     dataIndex: 'date',
     key: 'date',
-    render: (text: string) => <span className="text-xs text-slate-600">{text}</span>,
+    render: (text: string) => <span className="text-[12px] text-slate-500">{text}</span>,
   },
 ];
 
+type StatCard = {
+  key: string;
+  label: string;
+  value: string;
+  delta?: { value: string; trend: 'up' | 'down' };
+  icon: React.ElementType;
+  href: string;
+  accent: string;
+  spark: number[];
+};
+
+function Sparkline({
+  id,
+  data,
+  color,
+  height = 36,
+}: {
+  id: string;
+  data: number[];
+  color: string;
+  height?: number;
+}) {
+  const width = 100;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const step = data.length > 1 ? width / (data.length - 1) : width;
+  const padY = 3;
+  const usableH = height - padY * 2;
+  const points = data.map((v, i) => {
+    const x = i * step;
+    const y = padY + (1 - (v - min) / range) * usableH;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const lineD = `M ${points.join(' L ')}`;
+  const areaD = `${lineD} L ${width.toFixed(2)},${height} L 0,${height} Z`;
+  const gradientId = `spark-grad-${id}`;
+  const lastIdx = data.length - 1;
+  const last = points[lastIdx]?.split(',').map(Number) ?? [width, height / 2];
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="block h-9 w-full"
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill={`url(#${gradientId})`} />
+      <path
+        d={lineD}
+        stroke={color}
+        strokeWidth={1.6}
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={last[0]} cy={last[1]} r={2.4} fill={color} />
+      <circle cx={last[0]} cy={last[1]} r={4.6} fill={color} fillOpacity={0.18} />
+    </svg>
+  );
+}
+
+type QuickAction = {
+  key: string;
+  label: string;
+  icon: React.ElementType;
+  href: string;
+};
+
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const metricsData = isAdmin ? adminMetrics : salesMetrics;
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await fetchDashboard({ days: 7, topLimit: 5, recentLimit: 10 });
+        if (!cancelled) setDashboard(data);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Failed to load dashboard');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const today = new Date();
+  const greeting = (() => {
+    const h = today.getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  })();
+
+  const currency = dashboard?.currency ?? 'GHS';
+  const revenueSpark =
+    dashboard?.salesPerformance.series.map((p) => p.revenue) ?? [0, 0, 0, 0, 0, 0, 0];
+
+  const stats: StatCard[] = useMemo(() => {
+    const m = dashboard?.metrics;
+    const todaysDelta = formatChangePercent(m?.todaysSales.changePercent ?? 0);
+    const revenueDelta = formatChangePercent(m?.revenue7d.changePercent ?? 0);
+    const inventoryDelta = formatChangePercent(m?.inventoryItems.changePercent ?? 0);
+    const customersDelta = formatChangePercent(m?.activeCustomers.changePercent ?? 0);
+
+    return [
+      {
+        key: 'sales-today',
+        label: "Today's Sales",
+        value: formatDashboardCurrency(m?.todaysSales.value ?? 0, currency),
+        delta: todaysDelta,
+        icon: PointOfSaleIcon,
+        href: '/dashboard/sales',
+        accent: BRAND,
+        spark: revenueSpark.length ? revenueSpark : [0],
+      },
+      {
+        key: 'revenue-week',
+        label: 'Revenue (7d)',
+        value: formatDashboardCurrency(m?.revenue7d.value ?? 0, currency),
+        delta: revenueDelta,
+        icon: WalletIcon,
+        href: '/dashboard/reports',
+        accent: '#7c3aed',
+        spark: revenueSpark.length ? revenueSpark : [0],
+      },
+      {
+        key: 'inventory',
+        label: 'Inventory Items',
+        value: (m?.inventoryItems.value ?? 0).toLocaleString('en-US'),
+        delta: inventoryDelta,
+        icon: InventoryIcon,
+        href: '/dashboard/inventory',
+        accent: '#ea580c',
+        spark: revenueSpark.length ? revenueSpark : [0],
+      },
+      {
+        key: 'customers',
+        label: 'Active Customers',
+        value: (m?.activeCustomers.value ?? 0).toLocaleString('en-US'),
+        delta: customersDelta,
+        icon: PeopleAltIcon,
+        href: '/dashboard/reports',
+        accent: '#0284c7',
+        spark: revenueSpark.length ? revenueSpark : [0],
+      },
+    ];
+  }, [dashboard, currency, revenueSpark]);
+
+  const dailySalesData = useMemo(
+    () =>
+      (dashboard?.salesPerformance.series ?? []).map((p) => ({
+        name: p.day,
+        sales: p.revenue,
+      })),
+    [dashboard]
+  );
+
+  const topSellingItems = useMemo(
+    () =>
+      (dashboard?.topProducts.items ?? []).map((p) => ({
+        name: p.name,
+        sales: p.quantity,
+      })),
+    [dashboard]
+  );
+
+  const recentSales: RecentSale[] = useMemo(
+    () =>
+      (dashboard?.recentSales ?? []).slice(0, 5).map((s) => ({
+        id: s.receiptId,
+        items: s.itemsSummary,
+        total: formatDashboardCurrency(s.total, s.currency || currency),
+        time: s.time,
+      })),
+    [dashboard, currency]
+  );
+
+  const recentRestocks: RecentRestock[] = useMemo(
+    () =>
+      (dashboard?.recentRestocks ?? []).slice(0, 5).map((r) => ({
+        id: r._id || `${r.purchaseId}-${r.productId}-${r.date}`,
+        item: r.item,
+        quantity: r.quantityLabel,
+        supplier: r.supplier,
+        date: r.date,
+      })),
+    [dashboard]
+  );
+
+  const quickActions: QuickAction[] = [
+    { key: 'pos', label: 'Open POS', icon: PointOfSaleIcon, href: '/dashboard/sales' },
+    { key: 'add-product', label: 'Add Product', icon: AddIcon, href: '/dashboard/products' },
+    { key: 'invoice', label: 'New Invoice', icon: DescriptionIcon, href: '/dashboard/proforma-invoices' },
+    { key: 'expense', label: 'Record Expense', icon: AttachMoneyIcon, href: '/dashboard/expenses' },
+    { key: 'restock', label: 'Restock', icon: LocalShippingIcon, href: '/dashboard/purchases' },
+    { key: 'report', label: 'Sales Report', icon: AssessmentIcon, href: '/dashboard/reports' },
+  ];
 
   return (
     <DashboardLayout>
-      <div>
-        {/* Page title – kept visible below app bar via layout padding */}
-        <div className="mb-4 sm:mb-6 md:mb-8">
-          <h1 className="mb-1 text-xl sm:text-2xl font-bold text-slate-800 leading-tight">
-            {isAdmin ? 'Dashboard Overview' : 'Sales Overview'}
-          </h1>
-          <p className="text-xs text-slate-500">
-            {isAdmin
-              ? "Welcome back! Here's what's happening with your shop today."
-              : "Here's your sales summary and recent activity."}
-          </p>
-        </div>
-
-        {/* Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
-          {metricsData.map((metric, index) => {
-            const IconComponent = metric.icon;
-            const isReceiptsLink = !isAdmin && metric.title === 'Receipts';
-            const cardContent = (
-              <div className={`bg-white border border-slate-200 rounded-xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-opacity-40 ${isReceiptsLink ? 'cursor-pointer hover:border-teal-300' : ''}`}>
-                <div className="p-4 relative overflow-hidden">
-                  {/* Background gradient accent */}
-                  <div className={`absolute top-0 right-0 w-20 h-20 ${metric.bgGradient.includes('from-') ? `bg-gradient-to-br ${metric.bgGradient}` : metric.bgGradient} opacity-10 rounded-full translate-x-5 -translate-y-5`} />
-                  
-                  <div className="flex flex-col gap-3 relative z-10">
-                    {/* Header with Icon and Title */}
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium mb-1 uppercase tracking-wide text-slate-500">
-                          {metric.title}
-                        </p>
-                      </div>
-                      <div
-                        className={`w-9 h-9 ${metric.bgGradient.includes('from-') ? `bg-gradient-to-br ${metric.bgGradient}` : metric.bgGradient} shadow-lg rounded-lg flex items-center justify-center flex-shrink-0`}
-                        style={{ boxShadow: `0 4px 12px ${metric.color}30` }}
-                      >
-                        <IconComponent className="text-white text-base" />
-                      </div>
-                    </div>
-
-                    {/* Value */}
-                    <div>
-                      <p className="text-xl font-bold text-slate-800 leading-tight">
-                        {metric.value}
-                      </p>
-                    </div>
-
-                    {/* Change and Subtitle */}
-                    <div className="flex flex-col gap-1.5">
-                      {metric.change !== undefined && metric.change !== '' && (
-                        <div className="flex items-center gap-2">
-                          {metric.changeType === 'up' && (
-                            <span className="inline-flex items-center gap-1 h-5 px-2 text-xs font-semibold bg-emerald-50 text-emerald-600 rounded-full">
-                              <ArrowUpward className="text-xs" />
-                              {metric.change}
-                            </span>
-                          )}
-                          {metric.changeType === 'down' && (
-                            <span className="inline-flex items-center gap-1 h-5 px-2 text-xs font-semibold bg-amber-50 text-amber-600 rounded-full">
-                              <ArrowDownward className="text-xs" />
-                              {metric.change}
-                            </span>
-                          )}
-                          {metric.changeType === 'neutral' && (
-                            <span className="inline-flex items-center gap-1 h-5 px-2 text-xs font-semibold bg-slate-100 text-slate-500 rounded-full">
-                              <Remove className="text-xs" />
-                              {metric.change}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <p className="text-xs text-slate-500 leading-relaxed">
-                        {metric.subtitle}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-            return isReceiptsLink ? (
-              <Link key={index} href="/dashboard/receipts" className="block">
-                {cardContent}
-              </Link>
-            ) : (
-              <div key={index}>{cardContent}</div>
-            );
-          })}
-        </div>
-
-        {/* Quick actions - sales only, brought up */}
-        {!isAdmin && (
-          <div className="mb-6">
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-bold text-slate-800">Quick actions</h2>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  href="/dashboard/sales"
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:border-teal-300 hover:bg-teal-50"
-                >
-                  <PointOfSaleIcon className="text-teal-600" />
-                  Open Sales (POS)
-                </Link>
-                <Link
-                  href="/dashboard/receipts"
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:border-teal-300 hover:bg-teal-50"
-                >
-                  <ReceiptIcon className="text-teal-600" />
-                  View all receipts
-                </Link>
-                <Link
-                  href="/dashboard/products"
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:border-teal-300 hover:bg-teal-50"
-                >
-                  <ListIcon className="text-teal-600" />
-                  Browse products
-                </Link>
-              </div>
-            </div>
+      <Spin spinning={loading} tip="Loading dashboard…">
+      <div className="space-y-5 sm:space-y-6">
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
           </div>
         )}
+        {/* ── Page header ── */}
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              {today.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </p>
+            <h1 className="mt-1 text-[1.5rem] font-bold leading-tight tracking-tight text-slate-900 sm:text-[1.75rem]">
+              {greeting}, welcome back
+            </h1>
+          </div>
+          <Button
+            type="primary"
+            href="/dashboard/sales"
+            icon={<PointOfSaleIcon className="!text-[1rem]" />}
+          >
+            Open POS
+          </Button>
+        </header>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-5 mb-4 sm:mb-6">
-          {/* Sales Chart */}
-          <div className="lg:col-span-2">
-            <div className="bg-white border border-slate-200 rounded-xl h-full shadow-sm">
-              <div className="p-4">
-                <div className="mb-4">
-                  <h2 className="mb-1 text-base font-bold text-slate-800">
-                    Sales Performance
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Daily sales overview for the past week
+        {/* ── KPI cards ── */}
+        <section
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          aria-label="Key metrics"
+        >
+          {stats.map((s) => {
+            const Icon = s.icon;
+            const trendUp = s.delta?.trend === 'up';
+            const accent = s.accent;
+            return (
+              <Link
+                key={s.key}
+                href={s.href}
+                className="group relative isolate flex flex-col overflow-hidden rounded-2xl bg-white p-5 ring-1 ring-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_-20px_rgba(15,23,42,0.25)]"
+                style={{
+                  backgroundImage: `linear-gradient(180deg, ${accent}07 0%, transparent 55%)`,
+                }}
+              >
+                {/* Accent corner glow */}
+                <span
+                  className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full opacity-70 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+                  style={{
+                    background: `radial-gradient(circle at center, ${accent}26, transparent 70%)`,
+                  }}
+                  aria-hidden
+                />
+
+                {/* Top row: label + icon */}
+                <div className="relative flex items-start justify-between gap-3">
+                  <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                    {s.label}
                   </p>
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset transition-transform duration-300 group-hover:scale-110"
+                    style={{
+                      background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)`,
+                      color: '#ffffff',
+                      boxShadow: `0 6px 16px -8px ${accent}99`,
+                      // @ts-expect-error css variable
+                      '--tw-ring-color': `${accent}33`,
+                    }}
+                  >
+                    <Icon className="!text-[1.05rem]" />
+                  </span>
                 </div>
-                <div className="mt-4">
-                  <ResponsiveContainer width="100%" height={320}>
-                    <AreaChart data={dailySalesData}>
-                      <defs>
-                        <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                      <XAxis 
-                        dataKey="name" 
-                        stroke="#64748b"
-                        tick={{ fontSize: 12 }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis 
-                        stroke="#64748b"
-                        tick={{ fontSize: 12 }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          borderRadius: 12, 
-                          border: '1px solid #e2e8f0',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                          backgroundColor: 'white',
-                        }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="sales" 
-                        stroke="#6366f1" 
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorSales)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Top Selling Items */}
-          <div className="lg:col-span-1">
-            <div className="bg-white border border-slate-200 rounded-xl h-full shadow-sm">
-              <div className="p-4">
-                <div className="mb-4">
-                  <h2 className="mb-1 text-base font-bold text-slate-800">
-                    Top Products
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Best selling items this week
+                {/* Value + trend */}
+                <div className="relative mt-4 flex items-end gap-2">
+                  <p className="text-[2rem] font-extrabold leading-none tracking-tight text-slate-900">
+                    {s.value}
                   </p>
+                  {s.delta && (
+                    <span
+                      className={`mb-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold ${
+                        trendUp
+                          ? 'bg-[#25395c]/10 text-[#25395c]'
+                          : 'bg-red-50 text-red-700'
+                      }`}
+                    >
+                      {trendUp ? (
+                        <TrendingUpIcon className="!text-[0.85rem]" />
+                      ) : (
+                        <TrendingDownIcon className="!text-[0.85rem]" />
+                      )}
+                      {s.delta.value}
+                    </span>
+                  )}
                 </div>
-                <div className="mt-4">
-                  <ResponsiveContainer width="100%" height={320}>
-                    <BarChart data={topSellingItems} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                      <XAxis 
-                        type="number"
-                        stroke="#64748b"
-                        tick={{ fontSize: 12 }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis 
-                        dataKey="name" 
-                        type="category"
-                        width={80}
-                        stroke="#64748b"
-                        tick={{ fontSize: 12 }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          borderRadius: 12, 
-                          border: '1px solid #e2e8f0',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                          backgroundColor: 'white',
-                        }}
-                      />
-                      <Bar 
-                        dataKey="sales" 
-                        fill="#10b981"
-                        radius={[0, 8, 8, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Tables Row */}
-        <div className={`grid grid-cols-1 gap-5 ${isAdmin ? 'md:grid-cols-2' : ''}`}>
-          {/* Recent Sales - full width for sales, half for admin */}
-          <div className={isAdmin ? '' : 'min-w-0'}>
-            <div className="bg-white border border-slate-200 rounded-xl h-full shadow-sm">
-              <div className="p-0">
-                <div className="p-4 pb-3 border-b border-slate-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center shadow-md">
-                        <ReceiptIcon className="text-base text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-sm font-bold text-slate-800">
-                          Recent Sales
-                        </h2>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {isAdmin ? 'Latest transactions' : 'Your latest transactions'}
-                        </p>
-                      </div>
-                    </div>
-                    {!isAdmin && (
-                      <Link
-                        href="/dashboard/receipts"
-                        className="text-xs font-medium text-teal-600 hover:text-teal-700"
-                      >
-                        View all receipts →
-                      </Link>
-                    )}
-                  </div>
+                {/* Full-bleed sparkline */}
+                <div className="relative -mx-5 -mb-5 mt-5">
+                  <Sparkline id={s.key} data={s.spark} color={accent} height={44} />
                 </div>
-                <div className="p-2 sm:p-3 overflow-x-auto">
-                  <Table<RecentSale>
-                    columns={recentSalesColumns}
-                    dataSource={recentSales}
-                    pagination={false}
-                    size="small"
-                    rowKey="id"
-                    scroll={{ x: 400 }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
+              </Link>
+            );
+          })}
+        </section>
 
-          {/* Recent Restocks - admin only */}
-          {isAdmin && (
+        {/* ── Quick actions ── */}
+        <section
+          className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5"
+          aria-label="Quick actions"
+        >
+          <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="bg-white border border-slate-200 rounded-xl h-full shadow-sm">
-                <div className="p-0">
-                  <div className="p-4 pb-3 border-b border-slate-200">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-400 rounded-lg flex items-center justify-center shadow-md">
-                        <LocalShippingIcon className="text-base text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-sm font-bold text-slate-800">
-                          Recent Restocks
-                        </h2>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Latest inventory updates
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-2 sm:p-3 overflow-x-auto">
-                    <Table<RecentRestock>
-                      columns={recentRestocksColumns}
-                      dataSource={recentRestocks}
-                      pagination={false}
-                      size="small"
-                      rowKey={(record, index) => `${record.item}-${index}`}
-                      scroll={{ x: 400 }}
-                    />
-                  </div>
+              <h2 className="text-sm font-bold text-slate-800">Quick actions</h2>
+              <p className="text-xs text-slate-500">Jump to your most common tasks</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+            {quickActions.map((a) => {
+              const Icon = a.icon;
+              return (
+                <Link
+                  key={a.key}
+                  href={a.href}
+                  className="group flex flex-col items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition hover:-translate-y-0.5 hover:border-transparent hover:bg-white hover:shadow-md"
+                >
+                  <span
+                    className="flex h-9 w-9 items-center justify-center rounded-lg transition-colors"
+                    style={{ backgroundColor: `${BRAND}14`, color: BRAND }}
+                  >
+                    <Icon className="!text-[1.1rem]" />
+                  </span>
+                  <span className="text-[12.5px] font-semibold text-slate-700 group-hover:text-slate-900">
+                    {a.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ── Charts row ── */}
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
+          {/* Sales performance */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm lg:col-span-2 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Sales performance</h2>
+                <p className="text-xs text-slate-500">Daily sales for the past 7 days</p>
+              </div>
+              <Link
+                href="/dashboard/reports"
+                className="inline-flex items-center gap-1 text-xs font-semibold transition hover:underline"
+                style={{ color: BRAND }}
+              >
+                View report <ArrowForwardIcon className="!text-[0.95rem]" />
+              </Link>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart
+                data={dailySalesData.length ? dailySalesData : [{ name: '—', sales: 0 }]}
+                margin={{ top: 5, right: 8, left: -10, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={BRAND} stopOpacity={0.32} />
+                    <stop offset="95%" stopColor={BRAND} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: 12,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.08)',
+                    backgroundColor: 'white',
+                    fontSize: 12,
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="sales"
+                  stroke={BRAND}
+                  strokeWidth={2.25}
+                  fillOpacity={1}
+                  fill="url(#colorSales)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Top products */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4">
+              <h2 className="text-sm font-bold text-slate-800">Top products</h2>
+              <p className="text-xs text-slate-500">Best sellers this week</p>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={topSellingItems.length ? topSellingItems : [{ name: 'No sales yet', sales: 0 }]}
+                layout="vertical"
+                margin={{ top: 5, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                <XAxis
+                  type="number"
+                  stroke="#94a3b8"
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={86}
+                  stroke="#475569"
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: 12,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.08)',
+                    backgroundColor: 'white',
+                    fontSize: 12,
+                  }}
+                />
+                <Bar dataKey="sales" fill={BRAND} radius={[0, 8, 8, 0]} barSize={18} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        {/* ── Activity tables ── */}
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:gap-5">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="flex h-9 w-9 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: `${BRAND}14`, color: BRAND }}
+                >
+                  <ReceiptIcon className="!text-[1.05rem]" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-800">Recent sales</h2>
+                  <p className="text-[11.5px] text-slate-500">Latest transactions</p>
                 </div>
               </div>
+              <Link
+                href="/dashboard/receipts"
+                className="text-xs font-semibold transition hover:underline"
+                style={{ color: BRAND }}
+              >
+                View all
+              </Link>
+            </header>
+            <div className="px-2 py-1.5 sm:px-3 sm:py-2 overflow-x-auto">
+              <Table<RecentSale>
+                columns={recentSalesColumns}
+                dataSource={recentSales}
+                pagination={false}
+                size="small"
+                rowKey="id"
+                scroll={{ x: 420 }}
+              />
             </div>
-          )}
+          </div>
 
-        </div>
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5 sm:px-5">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="flex h-9 w-9 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: `${BRAND}14`, color: BRAND }}
+                >
+                  <LocalShippingIcon className="!text-[1.05rem]" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-800">Recent restocks</h2>
+                  <p className="text-[11.5px] text-slate-500">Latest inventory updates</p>
+                </div>
+              </div>
+              <Link
+                href="/dashboard/purchases"
+                className="text-xs font-semibold transition hover:underline"
+                style={{ color: BRAND }}
+              >
+                View all
+              </Link>
+            </header>
+            <div className="px-2 py-1.5 sm:px-3 sm:py-2 overflow-x-auto">
+              <Table<RecentRestock>
+                columns={recentRestocksColumns}
+                dataSource={recentRestocks}
+                pagination={false}
+                size="small"
+                rowKey="id"
+                scroll={{ x: 420 }}
+              />
+            </div>
+          </div>
+        </section>
       </div>
+      </Spin>
     </DashboardLayout>
   );
 }
