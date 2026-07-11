@@ -753,7 +753,7 @@ export default function StaffManagementPage() {
         styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
       >
         <Form form={staffForm} layout="vertical" className="!mt-2">
-          <Divider orientation="left" className="!mt-0 !text-xs !text-slate-500">
+          <Divider titlePlacement="left" className="!mt-0 !text-xs !text-slate-500">
             Personal details
           </Divider>
           <Row gutter={16}>
@@ -823,7 +823,7 @@ export default function StaffManagementPage() {
             <Input placeholder="Street address" />
           </Form.Item>
 
-          <Divider orientation="left" className="!text-xs !text-slate-500">
+          <Divider titlePlacement="left" className="!text-xs !text-slate-500">
             Emergency contact
           </Divider>
           <Row gutter={16}>
@@ -863,7 +863,7 @@ export default function StaffManagementPage() {
             </Col>
           </Row>
 
-          <Divider orientation="left" className="!text-xs !text-slate-500">
+          <Divider titlePlacement="left" className="!text-xs !text-slate-500">
             Employment
           </Divider>
           <Row gutter={16}>
@@ -907,7 +907,7 @@ export default function StaffManagementPage() {
             />
           </Form.Item>
 
-          <Divider orientation="left" className="!text-xs !text-slate-500">
+          <Divider titlePlacement="left" className="!text-xs !text-slate-500">
             Salary & deductions
           </Divider>
           <Row gutter={16}>
@@ -940,7 +940,7 @@ export default function StaffManagementPage() {
             </Col>
           </Row>
 
-          <Divider orientation="left" className="!text-xs !text-slate-500">
+          <Divider titlePlacement="left" className="!text-xs !text-slate-500">
             Bank details
           </Divider>
           <Row gutter={16}>
@@ -956,7 +956,7 @@ export default function StaffManagementPage() {
             </Col>
           </Row>
 
-          <Divider orientation="left" className="!text-xs !text-slate-500">
+          <Divider titlePlacement="left" className="!text-xs !text-slate-500">
             Notes
           </Divider>
           <Form.Item name="notes" label="Additional notes">
