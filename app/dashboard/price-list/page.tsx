@@ -46,9 +46,9 @@ export default function PriceListPage() {
   }, [products, search, categoryFilter]);
 
   const handleExportCsv = () => {
-    const header = ['SKU', 'Name', 'Category', 'Cost (GHS)'];
+    const header = ['SKU', 'Name', 'Category', 'Selling Price (GHS)'];
     const lines = filtered.map((p) =>
-      [p.sku ?? '', p.name, p.category, (p.costPrice ?? 0).toFixed(2)]
+      [p.sku ?? '', p.name, p.category, (p.price ?? 0).toFixed(2)]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
     );
@@ -109,15 +109,15 @@ export default function PriceListPage() {
       ),
     },
     {
-      title: 'Cost',
-      dataIndex: 'costPrice',
-      key: 'costPrice',
+      title: 'Selling Price',
+      dataIndex: 'price',
+      key: 'price',
       width: 140,
       align: 'right',
-      sorter: (a, b) => (a.costPrice ?? 0) - (b.costPrice ?? 0),
+      sorter: (a, b) => (a.price ?? 0) - (b.price ?? 0),
       render: (_: number | null, r) => (
         <Text strong style={{ color: '#0f766e' }}>
-          {currency(r.costPrice ?? 0)}
+          {currency(r.price ?? 0)}
         </Text>
       ),
     },
@@ -132,7 +132,7 @@ export default function PriceListPage() {
             <Title level={4} className="!mb-1 !font-bold !text-slate-800">
               Price List
             </Title>
-            <Text type="secondary">Product catalog with cost pricing.</Text>
+            <Text type="secondary">Product catalog with selling prices.</Text>
           </div>
           <Button
             type="primary"

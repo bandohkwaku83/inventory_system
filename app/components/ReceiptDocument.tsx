@@ -71,6 +71,9 @@ export default function ReceiptDocument({
         {receiptSettings.showEmail && businessInfo.email && (
           <p className="text-[10px] text-slate-600">{businessInfo.email}</p>
         )}
+        {receiptSettings.showTaxId && businessInfo.taxId && (
+          <p className="text-[10px] text-slate-600">TIN: {businessInfo.taxId}</p>
+        )}
       </div>
 
       <div className="border-y border-dashed border-slate-300 py-2 text-[10px]">

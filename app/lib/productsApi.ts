@@ -9,7 +9,9 @@ export function productImageSrc(image?: string | null): string {
 export function getApiBase(): string {
   const fromEnv =
     typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : undefined;
-  return (fromEnv || 'http://localhost:8000').replace(/\/$/, '');
+  const raw = (fromEnv || 'http://localhost:8000').replace(/\/+$/, '');
+  // Paths already include `/api/...`; allow env with or without trailing `/api`.
+  return raw.replace(/\/api$/i, '');
 }
 
 export function apiUrl(path: string): string {

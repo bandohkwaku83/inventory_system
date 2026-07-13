@@ -12,36 +12,61 @@ import {
   ImageOutlined as ImageIcon,
   SecurityOutlined as SecurityIcon,
   ChevronRight as ChevronRightIcon,
+  Category as CategoryIcon,
+  Inventory2 as InventoryIcon,
+  PointOfSale as PointOfSaleIcon,
+  Gavel as GavelIcon,
+  WorkOutline as WorkOutlineIcon,
 } from '@mui/icons-material';
 import {
   Button,
   Checkbox,
   Form,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Switch,
   Tag,
   Typography,
   message,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PictureOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PictureOutlined, CloseOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
-import { useSettings } from '../../context/SettingsContext';
+import {
+  useSettings,
+  buildDepartmentTree,
+  collectDescendantIds,
+  getDivisions,
+  type Department,
+  type ProductCategory,
+} from '../../context/SettingsContext';
 import type { ReceiptSettings } from '../../context/SettingsContext';
+import { useProducts } from '../../context/ProductsContext';
+import { useStaff } from '../../context/StaffContext';
 import {
   canManageRoles,
   type Permission,
   type RoleDefinition,
 } from '../../lib/permissions';
+import { GHANA_TAX_RATES } from '../../lib/tax';
 
 const { Text, Title } = Typography;
 
 const BRAND = '#25395c';
 
-type SettingsSection = 'business' | 'receipt' | 'roles';
+type SettingsSection =
+  | 'business'
+  | 'tax'
+  | 'receipt'
+  | 'categories'
+  | 'departments'
+  | 'inventory'
+  | 'pos'
+  | 'roles';
 
 const NAV_ITEMS: {
   id: SettingsSection;
@@ -52,14 +77,44 @@ const NAV_ITEMS: {
   {
     id: 'business',
     label: 'Business profile',
-    description: 'Store name, contact & tax details',
+    description: 'Store name, contact & logo',
     icon: BusinessIcon,
+  },
+  {
+    id: 'tax',
+    label: 'Tax & compliance',
+    description: 'TIN and Ghana tax rates',
+    icon: GavelIcon,
   },
   {
     id: 'receipt',
     label: 'Receipt template',
     description: 'What appears on printed receipts',
     icon: ReceiptIcon,
+  },
+  {
+    id: 'categories',
+    label: 'Product categories',
+    description: 'Shop sections for inventory',
+    icon: CategoryIcon,
+  },
+  {
+    id: 'departments',
+    label: 'Departments',
+    description: 'Departments and divisions',
+    icon: WorkOutlineIcon,
+  },
+  {
+    id: 'inventory',
+    label: 'Inventory alerts',
+    description: 'Low-stock thresholds',
+    icon: InventoryIcon,
+  },
+  {
+    id: 'pos',
+    label: 'POS & sales',
+    description: 'Checkout defaults',
+    icon: PointOfSaleIcon,
   },
   {
     id: 'roles',
@@ -72,7 +127,7 @@ const NAV_ITEMS: {
 const RECEIPT_TOGGLES: {
   key: keyof Pick<
     ReceiptSettings,
-    'showLogo' | 'showAddress' | 'showPhone' | 'showEmail'
+    'showLogo' | 'showAddress' | 'showPhone' | 'showEmail' | 'showTaxId'
   >;
   label: string;
   description: string;
@@ -82,6 +137,7 @@ const RECEIPT_TOGGLES: {
   { key: 'showAddress', label: 'Address', description: 'Show business address on receipt', icon: LocationIcon },
   { key: 'showPhone', label: 'Phone number', description: 'Include contact phone', icon: PhoneIcon },
   { key: 'showEmail', label: 'Email address', description: 'Include contact email', icon: EmailIcon },
+  { key: 'showTaxId', label: 'Tax ID (TIN)', description: 'Show your business TIN on receipts', icon: GavelIcon },
 ];
 
 function SectionHeader({
@@ -94,8 +150,8 @@ function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 border-b border-slate-200/80 pb-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mb-6 w-full border-b border-slate-200/80 pb-6">
+      <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
           <p className="mt-1.5 text-sm leading-relaxed text-slate-500">{description}</p>
@@ -177,13 +233,13 @@ function FormField({
   className?: string;
 }) {
   return (
-    <label className={`block ${className ?? ''}`}>
+    <div className={`block w-full min-w-0 ${className ?? ''}`}>
       <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
         {Icon ? <Icon sx={{ fontSize: 14 }} className="text-slate-400" /> : null}
         {label}
       </span>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -192,6 +248,7 @@ function ReceiptPreview({
   address,
   phone,
   email,
+  taxId,
   logoUrl,
   footerMessage,
   settings,
@@ -200,6 +257,7 @@ function ReceiptPreview({
   address: string;
   phone: string;
   email: string;
+  taxId: string;
   logoUrl: string | null;
   footerMessage: string;
   settings: ReceiptSettings;
@@ -232,6 +290,9 @@ function ReceiptPreview({
         ) : null}
         {settings.showEmail && email ? (
           <p className="mt-0.5 text-center text-slate-500">{email}</p>
+        ) : null}
+        {settings.showTaxId && taxId ? (
+          <p className="mt-0.5 text-center text-slate-500">TIN: {taxId}</p>
         ) : null}
         <div className="my-3 border-t border-dashed border-slate-200" />
         <div className="space-y-1 text-slate-400">
@@ -360,9 +421,15 @@ function LogoUploader({
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { products } = useProducts();
+  const { staff } = useStaff();
   const {
     businessInfo,
     receiptSettings,
+    inventoryPreferences,
+    posPreferences,
+    categories,
+    departments,
     roles,
     rolesLoading,
     settingsLoading,
@@ -370,6 +437,15 @@ export default function SettingsPage() {
     entitlementGroups,
     updateBusinessInfo,
     updateReceiptSettings,
+    updateInventoryPreferences,
+    updatePosPreferences,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+    saveDepartmentBranch,
+    updateDepartment,
+    updateDepartmentBranch,
+    deleteDepartment,
     saveBusinessInfo,
     saveReceiptSettings,
     uploadLogo,
@@ -384,8 +460,114 @@ export default function SettingsPage() {
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleForm] = Form.useForm();
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<ProductCategory | null>(null);
+  const [categoryForm] = Form.useForm();
+  const [departmentModalOpen, setDepartmentModalOpen] = useState(false);
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [editingDivisionOnly, setEditingDivisionOnly] = useState(false);
+  const [departmentForm] = Form.useForm();
 
   const canEditRoles = user ? canManageRoles(user.role, roles, user.entitlements) : false;
+
+  const departmentTree = buildDepartmentTree(departments);
+  const topLevelDepartmentCount = departmentTree.length;
+  const divisionCount = departments.filter((d) => d.parentId).length;
+
+  const productCountByCategory = (cat: ProductCategory) =>
+    products.filter(
+      (p) => p.categoryId === cat.id || p.category.toLowerCase() === cat.name.toLowerCase()
+    ).length;
+
+  const openCategoryModal = (cat?: ProductCategory) => {
+    if (cat) {
+      setEditingCategory(cat);
+      categoryForm.setFieldsValue({ name: cat.name });
+    } else {
+      setEditingCategory(null);
+      categoryForm.resetFields();
+    }
+    setCategoryModalOpen(true);
+  };
+
+  const handleSaveCategory = async () => {
+    try {
+      const values = await categoryForm.validateFields();
+      const name = (values.name as string).trim();
+      if (editingCategory) {
+        await updateCategory(editingCategory.id, name);
+      } else {
+        await addCategory(name);
+      }
+      setCategoryModalOpen(false);
+    } catch {
+      /* validation or API failed */
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await deleteCategory(id);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not delete category');
+    }
+  };
+
+  const openDepartmentModal = (dept?: Department) => {
+    if (dept?.parentId) {
+      setEditingDepartment(dept);
+      setEditingDivisionOnly(true);
+      departmentForm.setFieldsValue({ name: dept.name });
+    } else if (dept) {
+      setEditingDepartment(dept);
+      setEditingDivisionOnly(false);
+      departmentForm.setFieldsValue({
+        name: dept.name,
+        divisions: getDivisions(departments, dept.id).map((division) => ({
+          id: division.id,
+          name: division.name,
+        })),
+      });
+    } else {
+      setEditingDepartment(null);
+      setEditingDivisionOnly(false);
+      departmentForm.resetFields();
+      departmentForm.setFieldsValue({ divisions: [] });
+    }
+    setDepartmentModalOpen(true);
+  };
+
+  const handleSaveDepartment = async () => {
+    try {
+      const values = await departmentForm.validateFields();
+      const name = (values.name as string).trim();
+      if (editingDivisionOnly && editingDepartment) {
+        updateDepartment(editingDepartment.id, { name });
+      } else if (editingDepartment) {
+        const divisions = (values.divisions as { id?: string; name: string }[] | undefined) ?? [];
+        updateDepartmentBranch(editingDepartment.id, { name, divisions });
+      } else {
+        const divisions = ((values.divisions as { name: string }[] | undefined) ?? [])
+          .map((row) => row.name.trim())
+          .filter(Boolean);
+        saveDepartmentBranch({ name, divisions });
+      }
+      setDepartmentModalOpen(false);
+    } catch (e) {
+      if (e instanceof Error && e.message) message.error(e.message);
+    }
+  };
+
+  const handleDeleteDepartment = (id: string) => {
+    const ids = collectDescendantIds(departments, id);
+    const count = staff.filter((s) => s.department && ids.has(s.department)).length;
+    if (count > 0) {
+      message.warning(
+        `${count} staff member${count !== 1 ? 's are' : ' is'} assigned under this department. They will keep their division code until updated.`
+      );
+    }
+    deleteDepartment(id);
+  };
 
   const openRoleModal = (role?: RoleDefinition) => {
     if (role) {
@@ -446,7 +628,7 @@ export default function SettingsPage() {
             Settings
           </Title>
           <Text type="secondary" className="text-sm">
-            Manage your store profile, receipts, and team access in one place.
+            Manage your store profile, receipts, categories, departments, inventory alerts, POS defaults, and team access.
           </Text>
         </div>
 
@@ -517,8 +699,8 @@ export default function SettingsPage() {
           </nav>
 
           {/* Main content panel */}
-          <div className="min-w-0 flex-1">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
+          <div className="w-full min-w-0 flex-1">
+            <div className="w-full rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
               {activeSection === 'business' ? (
                 <>
                   <SectionHeader
@@ -573,6 +755,9 @@ export default function SettingsPage() {
                       />
                     </FormField>
                   </div>
+                  <p className="mt-4 text-xs text-slate-500">
+                    Tax ID (TIN) is configured under Tax &amp; compliance.
+                  </p>
                   <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
                     <button
                       type="button"
@@ -636,6 +821,7 @@ export default function SettingsPage() {
                       address={businessInfo.address}
                       phone={businessInfo.phone}
                       email={businessInfo.email}
+                      taxId={businessInfo.taxId}
                       logoUrl={businessInfo.logoUrl}
                       footerMessage={receiptSettings.footerMessage}
                       settings={receiptSettings}
@@ -654,6 +840,346 @@ export default function SettingsPage() {
                   </div>
                     </>
                   )}
+                </>
+              ) : null}
+
+              {activeSection === 'tax' ? (
+                <>
+                  <SectionHeader
+                    title="Tax & compliance"
+                    description="Your business TIN and Ghana standard tax rates applied to sales."
+                  />
+                  {settingsLoading ? (
+                    <div className="py-10 text-center text-sm text-slate-400">Loading settings…</div>
+                  ) : (
+                    <>
+                      <div className="grid gap-5 lg:grid-cols-2">
+                        <div className="space-y-4">
+                          <FormField label="Tax ID (TIN)" icon={GavelIcon}>
+                            <input
+                              className={inputClass}
+                              value={businessInfo.taxId}
+                              onChange={(e) => updateBusinessInfo({ taxId: e.target.value })}
+                              placeholder="C0000000000"
+                            />
+                          </FormField>
+                          <p className="text-xs leading-relaxed text-slate-500">
+                            Used on GRA reports and optionally printed on receipts. Enable &ldquo;Tax ID
+                            (TIN)&rdquo; under Receipt template to show it on receipts.
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                            Ghana standard rates
+                          </p>
+                          <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                            <li className="flex justify-between gap-4">
+                              <span>NHIL</span>
+                              <span className="font-semibold">{(GHANA_TAX_RATES.nhil * 100).toFixed(1)}%</span>
+                            </li>
+                            <li className="flex justify-between gap-4">
+                              <span>GETFund</span>
+                              <span className="font-semibold">{(GHANA_TAX_RATES.getfund * 100).toFixed(1)}%</span>
+                            </li>
+                            <li className="flex justify-between gap-4">
+                              <span>COVID levy</span>
+                              <span className="font-semibold">{(GHANA_TAX_RATES.covidLevy * 100).toFixed(1)}%</span>
+                            </li>
+                            <li className="flex justify-between gap-4">
+                              <span>VAT</span>
+                              <span className="font-semibold">{(GHANA_TAX_RATES.vat * 100).toFixed(1)}%</span>
+                            </li>
+                          </ul>
+                          <p className="mt-3 text-xs text-slate-500">
+                            Applied automatically to tax-inclusive prices at checkout and in GRA reports.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
+                        <button
+                          type="button"
+                          disabled={settingsSaving}
+                          onClick={() => void saveBusinessInfo()}
+                          className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ backgroundColor: BRAND }}
+                        >
+                          {settingsSaving ? 'Saving…' : 'Save TIN'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : null}
+
+              {activeSection === 'categories' ? (
+                <>
+                  <SectionHeader
+                    title="Product categories"
+                    description="Organize inventory by shop section. Assign cashiers to categories on the Users page."
+                    action={
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={() => openCategoryModal()}
+                        className="!rounded-xl !font-semibold"
+                        style={{ backgroundColor: BRAND }}
+                      >
+                        Add category
+                      </Button>
+                    }
+                  />
+                  <div className="overflow-hidden rounded-xl border border-slate-200/80">
+                    {categories.length === 0 ? (
+                      <div className="px-5 py-10 text-center text-sm text-slate-400">
+                        No categories yet. Add your first shop section.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {categories.map((cat) => (
+                          <div
+                            key={cat.id}
+                            className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-900">{cat.name}</p>
+                              <p className="text-xs text-slate-500">
+                                {productCountByCategory(cat)} product
+                                {productCountByCategory(cat) !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <Space size={4}>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<EditOutlined />}
+                                className="!text-slate-500 hover:!text-slate-800"
+                                onClick={() => openCategoryModal(cat)}
+                              />
+                              <Popconfirm
+                                title="Delete this category?"
+                                description="Products in this category are not deleted."
+                                onConfirm={() => void handleDeleteCategory(cat.id)}
+                              >
+                                <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                              </Popconfirm>
+                            </Space>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/60 px-4 py-3">
+                    <p className="text-2xl font-bold text-slate-900">{categories.length}</p>
+                    <p className="text-xs text-slate-500">Total categories</p>
+                  </div>
+                </>
+              ) : null}
+
+              {activeSection === 'departments' ? (
+                <>
+                  <SectionHeader
+                    title="Departments"
+                    description="Add a department (e.g. Technical, Media), then add divisions under it (e.g. Frontend, Sound)."
+                    action={
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={() => openDepartmentModal()}
+                        className="!rounded-xl !font-semibold"
+                        style={{ backgroundColor: BRAND }}
+                      >
+                        Add department
+                      </Button>
+                    }
+                  />
+                  {departments.length === 0 ? (
+                    <div className="rounded-xl border border-slate-200/80 px-5 py-10 text-center text-sm text-slate-400">
+                      No departments yet. Add a department such as Technical or Media, then add divisions under it.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {departmentTree.map((dept) => (
+                        <div
+                          key={dept.id}
+                          className="overflow-hidden rounded-xl border border-slate-200/80"
+                        >
+                          <div className="flex items-start justify-between gap-4 bg-slate-50/80 px-4 py-4 sm:px-5">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Tag color="processing" bordered={false} className="!m-0 rounded-full px-2 text-[11px] font-medium">
+                                  Department
+                                </Tag>
+                                <p className="text-sm font-semibold text-slate-900">{dept.name}</p>
+                              </div>
+                              <p className="mt-1.5 text-xs text-slate-400">
+                                {dept.children.length} division{dept.children.length !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <Space size={4} className="shrink-0" wrap>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<EditOutlined />}
+                                className="!text-slate-500 hover:!text-slate-800"
+                                onClick={() => openDepartmentModal(dept)}
+                              />
+                              <Popconfirm
+                                title="Delete this department?"
+                                description="All divisions under it will be removed too."
+                                onConfirm={() => handleDeleteDepartment(dept.id)}
+                              >
+                                <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                              </Popconfirm>
+                            </Space>
+                          </div>
+                          {dept.children.length > 0 ? (
+                            <div className="divide-y divide-slate-100 border-t border-slate-100">
+                              {dept.children.map((division) => (
+                                <div
+                                  key={division.id}
+                                  className="flex items-start justify-between gap-4 py-3.5 pl-8 pr-4 sm:pl-10 sm:pr-5"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-slate-300" aria-hidden>
+                                        └
+                                      </span>
+                                      <Tag bordered={false} className="!m-0 rounded-full px-2 text-[10px] font-medium">
+                                        Division
+                                      </Tag>
+                                      <p className="text-sm font-medium text-slate-800">{division.name}</p>
+                                    </div>
+                                  </div>
+                                  <Space size={4} className="shrink-0">
+                                    <Button
+                                      type="text"
+                                      size="small"
+                                      icon={<EditOutlined />}
+                                      className="!text-slate-500 hover:!text-slate-800"
+                                      onClick={() => openDepartmentModal(division)}
+                                    />
+                                    <Popconfirm
+                                      title="Delete this division?"
+                                      description="Staff assigned here keep their code until edited."
+                                      onConfirm={() => handleDeleteDepartment(division.id)}
+                                    >
+                                      <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                                    </Popconfirm>
+                                  </Space>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 px-4 py-3">
+                      <p className="text-2xl font-bold text-slate-900">{topLevelDepartmentCount}</p>
+                      <p className="text-xs text-slate-500">Departments</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 px-4 py-3">
+                      <p className="text-2xl font-bold text-slate-900">{divisionCount}</p>
+                      <p className="text-xs text-slate-500">Divisions</p>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {activeSection === 'inventory' ? (
+                <div className="settings-section w-full">
+                  <SectionHeader
+                    title="Inventory alerts"
+                    description="Configure when items are flagged as low stock on dashboards and inventory views."
+                  />
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 sm:p-5">
+                      <div className="mb-1 flex items-center gap-2">
+                        <InventoryIcon sx={{ fontSize: 18 }} className="shrink-0 text-slate-400" />
+                        <span className="text-sm font-medium text-slate-800">Low-stock threshold</span>
+                      </div>
+                      <p className="mb-4 text-xs leading-relaxed text-slate-500">
+                        Products at or below this quantity are highlighted as low stock. Individual
+                        products can still have their own reorder level on the Inventory page.
+                      </p>
+                      <InputNumber
+                        min={1}
+                        max={9999}
+                        value={inventoryPreferences.lowStockThreshold}
+                        onChange={(value) =>
+                          updateInventoryPreferences({
+                            lowStockThreshold: typeof value === 'number' ? value : 10,
+                          })
+                        }
+                        style={{ width: 140 }}
+                      />
+                    </div>
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                      <p className="text-sm font-medium text-slate-800">Saved automatically</p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                        Inventory alert preferences are stored on this device and apply immediately.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeSection === 'pos' ? (
+                <>
+                  <SectionHeader
+                    title="POS & sales"
+                    description="Default checkout behaviour for the point-of-sale screen."
+                  />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">Default payment method</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Pre-selected when opening checkout</p>
+                      </div>
+                      <Select
+                        value={posPreferences.defaultPaymentMethod}
+                        onChange={(value: 'Cash' | 'Mobile Money') =>
+                          updatePosPreferences({ defaultPaymentMethod: value })
+                        }
+                        className="min-w-[140px]"
+                        options={[
+                          { value: 'Cash', label: 'Cash' },
+                          { value: 'Mobile Money', label: 'Mobile Money' },
+                        ]}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">Discounts enabled by default</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Show the discount field when starting a sale</p>
+                      </div>
+                      <Switch
+                        checked={posPreferences.discountsEnabledByDefault}
+                        onChange={(checked) =>
+                          updatePosPreferences({ discountsEnabledByDefault: checked })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">Require customer name</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Prompt for customer name before completing sale</p>
+                      </div>
+                      <Switch
+                        checked={posPreferences.requireCustomerName}
+                        onChange={(checked) =>
+                          updatePosPreferences({ requireCustomerName: checked })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-6 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
+                    <p className="text-sm font-medium text-slate-800">Saved automatically</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      POS preferences are stored on this device and apply to new checkout sessions.
+                    </p>
+                  </div>
                 </>
               ) : null}
 
@@ -787,6 +1313,119 @@ export default function SettingsPage() {
             {editingRole?.isSystem ? (
               <p className="text-xs text-slate-500">
                 System role names are fixed, but you can update their entitlements.
+              </p>
+            ) : null}
+          </Form>
+        </Modal>
+
+        <Modal
+          title={editingCategory ? `Edit category — ${editingCategory.name}` : 'Add category'}
+          open={categoryModalOpen}
+          onCancel={() => setCategoryModalOpen(false)}
+          onOk={() => void handleSaveCategory()}
+          okText={editingCategory ? 'Save changes' : 'Add category'}
+          cancelText="Cancel"
+          destroyOnHidden
+        >
+          <Form form={categoryForm} layout="vertical" requiredMark={false} className="mt-2">
+            <Form.Item
+              name="name"
+              label={<span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category name</span>}
+              rules={[{ required: true, message: 'Category name is required' }]}
+            >
+              <Input placeholder="e.g. Lighting" className="!rounded-xl" />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          title={
+            editingDivisionOnly && editingDepartment
+              ? `Edit division — ${editingDepartment.name}`
+              : editingDepartment
+                ? `Edit department — ${editingDepartment.name}`
+                : 'Add department'
+          }
+          open={departmentModalOpen}
+          onCancel={() => setDepartmentModalOpen(false)}
+          onOk={() => void handleSaveDepartment()}
+          okText={
+            editingDivisionOnly
+              ? 'Save changes'
+              : editingDepartment
+                ? 'Save changes'
+                : 'Add department'
+          }
+          cancelText="Cancel"
+          destroyOnHidden
+        >
+          <Form form={departmentForm} layout="vertical" requiredMark={false} className="mt-2">
+            <Form.Item
+              name="name"
+              label={
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {editingDivisionOnly ? 'Division name' : 'Department name'}
+                </span>
+              }
+              rules={[{ required: true, message: 'Name is required' }]}
+            >
+              <Input
+                placeholder={
+                  editingDivisionOnly
+                    ? 'e.g. Frontend, Sound, Control Room'
+                    : 'e.g. Technical, Media'
+                }
+                className="!rounded-xl"
+              />
+            </Form.Item>
+
+            {!editingDivisionOnly ? (
+              <Form.List name="divisions">
+                {(fields, { add, remove }) => (
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Divisions
+                    </span>
+                    {fields.map((field) => (
+                      <div key={field.key} className="flex items-start gap-2">
+                        <Form.Item name={[field.name, 'id']} hidden>
+                          <Input />
+                        </Form.Item>
+                        <Form.Item
+                          {...field}
+                          name={[field.name, 'name']}
+                          className="!mb-0 flex-1"
+                          rules={[{ required: true, message: 'Division name is required' }]}
+                        >
+                          <Input placeholder="e.g. Frontend, Sound" className="!rounded-xl" />
+                        </Form.Item>
+                        <Button
+                          type="text"
+                          danger
+                          icon={<MinusCircleOutlined />}
+                          className="!mt-1"
+                          onClick={() => remove(field.name)}
+                          aria-label="Remove division"
+                        />
+                      </div>
+                    ))}
+                    <Button
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() => add()}
+                      className="!rounded-xl"
+                      block
+                    >
+                      Add division
+                    </Button>
+                  </div>
+                )}
+              </Form.List>
+            ) : null}
+
+            {editingDepartment ? (
+              <p className="mt-3 text-xs text-slate-500">
+                Code: <span className="font-mono">{editingDepartment.id}</span> (fixed for staff records)
               </p>
             ) : null}
           </Form>

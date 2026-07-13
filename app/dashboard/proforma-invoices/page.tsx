@@ -250,14 +250,23 @@ export default function ProformaInvoicesPage() {
           </Text>
           <Select
             showSearch
-            placeholder="Search product to add…"
+            placeholder="Search by name or SKU…"
             className="w-full mb-3"
-            optionFilterProp="label"
             suffixIcon={<SearchOutlined />}
+            filterOption={(input, option) => {
+              if (!option?.value) return false;
+              const q = input.toLowerCase();
+              const p = visibleProducts.find((x) => x.id === option.value);
+              if (!p) return false;
+              return (
+                p.name.toLowerCase().includes(q) ||
+                (p.sku ?? '').toLowerCase().includes(q)
+              );
+            }}
             onSelect={(id: string) => addToCart(id, 1)}
             options={visibleProducts.map((p) => ({
               value: p.id,
-              label: `${p.name} — GHS ${p.price.toFixed(2)}`,
+              label: `${p.name}${p.sku ? ` · ${p.sku}` : ''} — GHS ${p.price.toFixed(2)}`,
             }))}
           />
 

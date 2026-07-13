@@ -7,11 +7,16 @@ export type Permission =
   | 'price_list'
   | 'suppliers'
   | 'purchases'
+  | 'locations'
+  | 'warehouses'
+  | 'stock_management'
+  | 'stock_transfers'
   | 'all_categories'
   | 'sales_pos'
   | 'sales_reports'
   | 'receipts'
   | 'proforma_invoices'
+  | 'customers'
   | 'bank'
   | 'expenses'
   | 'chart_of_accounts'
@@ -19,6 +24,8 @@ export type Permission =
   | 'payroll'
   | 'staff_attendance'
   | 'users'
+  | 'approvals'
+  | 'activity_log'
   | 'settings'
   | 'manage_roles';
 
@@ -56,6 +63,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'price_list', label: 'Price List', description: 'View and export price lists' },
       { key: 'suppliers', label: 'Suppliers', description: 'Manage suppliers' },
       { key: 'purchases', label: 'Purchases', description: 'Record purchase orders' },
+      { key: 'locations', label: 'Locations', description: 'Manage branches and warehouses' },
+      { key: 'warehouses', label: 'Warehouses', description: 'Warehouses, storage locations, and managers' },
+      { key: 'stock_management', label: 'Stock Management', description: 'Stock in/out, adjustments, and history' },
+      { key: 'stock_transfers', label: 'Stock Transfers', description: 'Inter-location inventory transfers' },
       { key: 'all_categories', label: 'All categories', description: 'Access every shop section (not restricted by category assignment)' },
     ],
   },
@@ -65,6 +76,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'sales_pos', label: 'Sales (POS)', description: 'Process point-of-sale transactions' },
       { key: 'sales_reports', label: 'Sales Reports', description: 'View sales analytics' },
       { key: 'receipts', label: 'Receipts', description: 'View and reprint receipts' },
+      { key: 'customers', label: 'Customers', description: 'Customer accounts and receivables' },
     ],
   },
   {
@@ -83,6 +95,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'payroll', label: 'Payroll', description: 'Staff salary records and monthly registers' },
       { key: 'staff_attendance', label: 'Staff Management', description: 'Manage staff and track attendance' },
       { key: 'users', label: 'Users', description: 'Manage system users' },
+    ],
+  },
+  {
+    label: 'Governance',
+    permissions: [
+      { key: 'approvals', label: 'Approvals', description: 'Review and approve requests' },
+      { key: 'activity_log', label: 'Activity Log', description: 'View system audit trail' },
     ],
   },
   {
@@ -107,10 +126,17 @@ export const PATH_PERMISSIONS: Record<string, Permission> = {
   '/dashboard/price-list': 'price_list',
   '/dashboard/suppliers': 'suppliers',
   '/dashboard/purchases': 'purchases',
+  '/dashboard/locations': 'warehouses',
+  '/dashboard/warehouses': 'warehouses',
+  '/dashboard/stock': 'stock_management',
+  '/dashboard/transfers': 'stock_management',
   '/dashboard/sales': 'sales_pos',
   '/dashboard/reports': 'sales_reports',
   '/dashboard/receipts': 'receipts',
   '/dashboard/proforma-invoices': 'proforma_invoices',
+  '/dashboard/customers': 'customers',
+  '/dashboard/approvals': 'approvals',
+  '/dashboard/activity': 'activity_log',
   // '/dashboard/bank': 'bank',
   '/dashboard/expenses': 'expenses',
   '/dashboard/accounts': 'chart_of_accounts',
@@ -121,6 +147,39 @@ export const PATH_PERMISSIONS: Record<string, Permission> = {
   '/dashboard/settings': 'settings',
 };
 
+export type DashboardVariant = 'admin' | 'sales' | 'inventory' | 'finance' | 'hr';
+
+/** Maps built-in role slugs to their tailored dashboard layout. */
+export const ROLE_DASHBOARD_VARIANT: Record<string, DashboardVariant> = {
+  admin: 'admin',
+  cashier: 'sales',
+  sales: 'sales',
+  gra_reporter: 'finance',
+  accountant: 'finance',
+  inventory_manager: 'inventory',
+  stock_clerk: 'inventory',
+  hr_manager: 'hr',
+};
+
+export const DASHBOARD_VARIANT_LABELS: Record<DashboardVariant, string> = {
+  admin: 'Operations overview',
+  sales: 'Sales workspace',
+  inventory: 'Inventory workspace',
+  finance: 'Finance workspace',
+  hr: 'People workspace',
+};
+
+/** Built-in system role slugs shown in Roles & access. */
+export const SYSTEM_ROLE_IDS = [
+  'admin',
+  'sales',
+  'inventory_manager',
+  'accountant',
+  'hr_manager',
+] as const;
+
+export type SystemRoleId = (typeof SYSTEM_ROLE_IDS)[number];
+
 export const DEFAULT_ROLES: RoleDefinition[] = [
   {
     id: 'admin',
@@ -130,29 +189,94 @@ export const DEFAULT_ROLES: RoleDefinition[] = [
     isSystem: true,
   },
   {
-    id: 'cashier',
-    name: 'Cashier',
-    description: 'Point-of-sale and sales with optional category restrictions',
+    id: 'sales',
+    name: 'Sales Representative',
+    description: 'Point-of-sale, receipts, and sales reporting',
     permissions: [
       'dashboard',
       'products',
-      'inventory',
       'price_list',
       'sales_pos',
       'sales_reports',
       'receipts',
       'proforma_invoices',
+      'customers',
     ],
     isSystem: true,
   },
   {
-    id: 'gra_reporter',
-    name: 'GRA Reporter',
-    description: 'GRA tax reporting and sales visibility',
-    permissions: ['dashboard', 'charts', 'sales_reports', 'receipts', 'gra_reports'],
+    id: 'inventory_manager',
+    name: 'Inventory Manager',
+    description: 'Stock levels, suppliers, and purchase orders',
+    permissions: [
+      'dashboard',
+      'products',
+      'inventory',
+      'categories',
+      'price_list',
+      'suppliers',
+      'purchases',
+      'warehouses',
+      'stock_management',
+    ],
+    isSystem: true,
+  },
+  {
+    id: 'accountant',
+    name: 'Accountant',
+    description: 'Expenses, tax reporting, and financial analytics',
+    permissions: [
+      'dashboard',
+      'charts',
+      'sales_reports',
+      'receipts',
+      'proforma_invoices',
+      'expenses',
+      'chart_of_accounts',
+      'gra_reports',
+    ],
+    isSystem: true,
+  },
+  {
+    id: 'hr_manager',
+    name: 'HR Manager',
+    description: 'Staff records, attendance, and payroll',
+    permissions: ['dashboard', 'staff_attendance', 'payroll', 'users'],
     isSystem: true,
   },
 ];
+
+const SYSTEM_ROLE_ID_SET = new Set<string>(SYSTEM_ROLE_IDS);
+
+/** Keeps only the built-in system roles plus any custom roles from the API. */
+export function normalizeSystemRoles(fetched: RoleDefinition[]): RoleDefinition[] {
+  const custom = fetched.filter((role) => !role.isSystem);
+  const systemFromApi = new Map(
+    fetched
+      .filter((role) => role.isSystem && SYSTEM_ROLE_ID_SET.has(role.id))
+      .map((role) => [role.id, role])
+  );
+  const system = DEFAULT_ROLES.map((defaults) => {
+    const fromApi = systemFromApi.get(defaults.id);
+    if (!fromApi) return defaults;
+
+    // Admin always gets every permission. Other system roles merge API + built-in defaults
+    // so new frontend permissions appear before the API is updated.
+    const permissions =
+      defaults.id === 'admin'
+        ? [...ALL_PERMISSIONS]
+        : Array.from(new Set([...defaults.permissions, ...fromApi.permissions]));
+
+    return {
+      ...defaults,
+      ...fromApi,
+      id: defaults.id,
+      isSystem: true,
+      permissions,
+    };
+  });
+  return [...system, ...custom];
+}
 
 export function findRole(roleId: string, roles: RoleDefinition[]): RoleDefinition | undefined {
   return roles.find((r) => r.id === roleId);
@@ -194,8 +318,12 @@ export function userCanAccessPath(
   path: string,
   roles: RoleDefinition[]
 ): boolean {
-  if (entitlements?.length) return canAccessPathByEntitlements(entitlements, path);
-  return canAccessPath(roleId, path, roles);
+  const permission = PATH_PERMISSIONS[path];
+  if (!permission) return true;
+  // Normalized roles include built-in defaults (new UI permissions before API sync)
+  if (roleHasPermission(roleId, permission, roles)) return true;
+  if (entitlements?.length) return hasEntitlement(entitlements, permission);
+  return false;
 }
 
 export function userHasPermission(
@@ -204,8 +332,9 @@ export function userHasPermission(
   permission: Permission,
   roles: RoleDefinition[]
 ): boolean {
+  if (roleHasPermission(roleId, permission, roles)) return true;
   if (entitlements?.length) return hasEntitlement(entitlements, permission);
-  return roleHasPermission(roleId, permission, roles);
+  return false;
 }
 
 export function hasFullCatalogAccess(
@@ -257,6 +386,37 @@ export function defaultLandingPath(
     }
   }
   return '/dashboard';
+}
+
+function effectivePermissions(
+  roleId: string,
+  entitlements: Permission[] | undefined,
+  roles: RoleDefinition[]
+): Permission[] {
+  if (entitlements?.length) return entitlements;
+  return findRole(roleId, roles)?.permissions ?? [];
+}
+
+/** Picks the dashboard layout for a user based on role slug or entitlements. */
+export function resolveDashboardVariant(
+  roleId: string,
+  entitlements: Permission[] | undefined,
+  roles: RoleDefinition[]
+): DashboardVariant {
+  const mapped = ROLE_DASHBOARD_VARIANT[roleId];
+  if (mapped) return mapped;
+
+  const perms = effectivePermissions(roleId, entitlements, roles);
+
+  if (perms.includes('manage_roles') || perms.includes('settings')) return 'admin';
+  if (perms.includes('staff_attendance') && !perms.includes('sales_pos')) return 'hr';
+  if (perms.includes('gra_reports') || (perms.includes('expenses') && !perms.includes('sales_pos'))) {
+    return 'finance';
+  }
+  if (perms.includes('purchases') || perms.includes('suppliers')) return 'inventory';
+  if (perms.includes('sales_pos')) return 'sales';
+
+  return 'admin';
 }
 
 export function slugifyRoleId(name: string): string {

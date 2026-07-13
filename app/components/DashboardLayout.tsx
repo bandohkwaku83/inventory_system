@@ -21,10 +21,16 @@ import {
   AdminPanelSettings as AdminPanelSettingsIcon,
   Logout as LogoutIcon,
   Inventory2 as InventoryIcon,
-  Category as CategoryIcon,
   Gavel as GavelIcon,
   Settings as SettingsIcon,
   Close as CloseIcon,
+  LocationOn as LocationOnIcon,
+  SwapHoriz as SwapHorizIcon,
+  Warehouse as WarehouseIcon,
+  Inventory2 as StockMgmtIcon,
+  People as PeopleIcon,
+  FactCheck as FactCheckIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
@@ -37,6 +43,8 @@ import {
 } from '../lib/permissions';
 import { BRAND, BRAND_DEEP, SYSTEM_LOGO } from '../lib/brand';
 import { useActionLoader } from './LoaderProvider';
+import GlobalSearch from './GlobalSearch';
+import NotificationBell from './NotificationBell';
 
 type MenuItem = {
   text: string;
@@ -62,16 +70,23 @@ const menuSections: MenuSection[] = [
     items: [
       { text: 'Products', icon: StorefrontIcon, path: '/dashboard/products' },
       { text: 'Inventory', icon: InventoryIcon, path: '/dashboard/inventory' },
-      { text: 'Categories', icon: CategoryIcon, path: '/dashboard/categories' },
       { text: 'Price List', icon: SellIcon, path: '/dashboard/price-list' },
       { text: 'Suppliers', icon: LocalOfferIcon, path: '/dashboard/suppliers' },
       { text: 'Purchases', icon: LocalShippingIcon, path: '/dashboard/purchases' },
     ],
   },
   {
+    heading: 'Warehouse & Stock',
+    items: [
+      { text: 'Warehouses', icon: WarehouseIcon, path: '/dashboard/warehouses' },
+      { text: 'Stock Management', icon: StockMgmtIcon, path: '/dashboard/stock' },
+    ],
+  },
+  {
     heading: 'Sales',
     items: [
       { text: 'Point of Sale', icon: ShoppingCartIcon, path: '/dashboard/sales' },
+      { text: 'Customers', icon: PeopleIcon, path: '/dashboard/customers' },
       { text: 'Sales Reports', icon: AssessmentIcon, path: '/dashboard/reports' },
       { text: 'Receipts', icon: ReceiptIcon, path: '/dashboard/receipts' },
       { text: 'Proforma Invoices', icon: DescriptionIcon, path: '/dashboard/proforma-invoices' },
@@ -91,6 +106,13 @@ const menuSections: MenuSection[] = [
       // { text: 'Payroll', icon: WorkIcon, path: '/dashboard/payroll' },
       { text: 'Staff Management', icon: EventAvailableIcon, path: '/dashboard/attendance' },
       { text: 'Users', icon: AdminPanelSettingsIcon, path: '/dashboard/users' },
+    ],
+  },
+  {
+    heading: 'Governance',
+    items: [
+      { text: 'Approvals', icon: FactCheckIcon, path: '/dashboard/approvals' },
+      { text: 'Activity Log', icon: HistoryIcon, path: '/dashboard/activity' },
     ],
   },
   {
@@ -203,6 +225,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     userCanAccessPath(user.role, user.entitlements, path, roles);
 
   const query = navQuery.trim().toLowerCase();
+
+  const searchablePages = menuSections.flatMap((section) =>
+    section.items
+      .filter((item) => canAccess(item.path))
+      .map((item) => ({
+        title: item.text,
+        subtitle: section.heading,
+        href: item.path,
+      }))
+  );
 
   const filteredSections = menuSections
     .map((section) => ({
@@ -400,17 +432,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             >
               <MenuIcon className="text-slate-700" />
             </button>
-            <div className="relative hidden min-w-0 max-w-[200px] flex-1 sm:block sm:max-w-[280px] lg:max-w-[400px]">
-              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                <SearchIcon className="text-base" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-2 text-sm outline-none transition-all focus:border-[#25395c] focus:bg-white focus:ring-4 focus:ring-[rgba(37,57,92,0.12)] sm:py-2.5 sm:pl-12 sm:pr-3"
-              />
+            <div className="hidden min-w-0 flex-1 sm:block">
+              <GlobalSearch navPages={searchablePages} />
             </div>
             <div className="ml-auto flex flex-shrink-0 items-center gap-2 sm:gap-3">
+              <NotificationBell />
               <div className="mr-1 hidden items-center leading-tight xl:flex">
                 <span className="text-[12px] font-semibold text-slate-600">
                   {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}

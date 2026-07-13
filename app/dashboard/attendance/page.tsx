@@ -55,6 +55,7 @@ import {
   type AttendanceStatus,
   type StaffMember,
 } from '../../context/StaffContext';
+import { departmentDisplayName, departmentSelectGroups, useSettings } from '../../context/SettingsContext';
 import { labelizeMetaValue, type StaffEmploymentType } from '../../lib/staffApi';
 
 const { Title, Text } = Typography;
@@ -115,6 +116,7 @@ export default function StaffManagementPage() {
     refreshDaily,
     refreshHistory,
   } = useStaff();
+  const { departments } = useSettings();
 
   const [messageApi, contextHolder] = message.useMessage();
   const [savingStaff, setSavingStaff] = useState(false);
@@ -146,8 +148,8 @@ export default function StaffManagementPage() {
     [staffMeta.relationships]
   );
   const departmentOptions = useMemo(
-    () => staffMeta.departments.map((d) => ({ value: d, label: labelizeMetaValue(d) })),
-    [staffMeta.departments]
+    () => departmentSelectGroups(departments),
+    [departments]
   );
   const employmentTypeOptions = useMemo(
     () =>
@@ -877,8 +879,12 @@ export default function StaffManagementPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="department" label="Department">
-                <Select allowClear placeholder="Select department" options={departmentOptions} />
+              <Form.Item name="department" label="Division">
+                <Select
+                  allowClear
+                  placeholder="Select department and division"
+                  options={departmentOptions}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -999,7 +1005,14 @@ export default function StaffManagementPage() {
               <div>
                 <div className="text-base font-semibold text-slate-800">{viewingStaff.name}</div>
                 <div className="mt-0.5 text-sm text-slate-500">
-                  {[viewingStaff.role, viewingStaff.department].filter(Boolean).join(' · ')}
+                  {[
+                    viewingStaff.role,
+                    viewingStaff.department
+                      ? departmentDisplayName(departments, viewingStaff.department)
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </div>
               </div>
             </div>
@@ -1072,9 +1085,9 @@ export default function StaffManagementPage() {
                   {EMPLOYMENT_TYPE_LABELS[viewingStaff.employmentType] ??
                     labelizeMetaValue(viewingStaff.employmentType)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Department">
+                <Descriptions.Item label="Division">
                   {viewingStaff.department
-                    ? labelizeMetaValue(viewingStaff.department)
+                    ? departmentDisplayName(departments, viewingStaff.department)
                     : '—'}
                 </Descriptions.Item>
               </Descriptions>

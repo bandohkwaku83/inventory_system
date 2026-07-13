@@ -90,7 +90,19 @@ export default function SystemUsersPage() {
         dataIndex: 'role',
         key: 'role',
         render: (v: UserRole) => (
-          <Tag color={v === 'admin' ? 'purple' : v === 'gra_reporter' ? 'blue' : 'cyan'}>
+          <Tag
+            color={
+              v === 'admin'
+                ? 'purple'
+                : v === 'accountant'
+                  ? 'blue'
+                  : v === 'inventory_manager'
+                    ? 'green'
+                    : v === 'hr_manager'
+                      ? 'gold'
+                      : 'cyan'
+            }
+          >
             {roleLabel(v, roles)}
           </Tag>
         ),
@@ -160,7 +172,7 @@ export default function SystemUsersPage() {
   const handleOpen = () => {
     setEditingId(null);
     form.resetFields();
-    form.setFieldsValue({ role: 'cashier', categoryIds: [], active: true });
+    form.setFieldsValue({ role: 'sales', categoryIds: [], active: true });
     setOpen(true);
   };
 

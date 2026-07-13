@@ -28,6 +28,7 @@ import ReceiptDocument from '../../components/ReceiptDocument';
 import { useProducts, type Product } from '../../context/ProductsContext';
 import { useSales } from '../../context/SalesContext';
 import { useAuth } from '../../context/AuthContext';
+import { useSettings } from '../../context/SettingsContext';
 
 type PaymentMethod = 'Cash' | 'Mobile Money';
 
@@ -73,6 +74,7 @@ export default function SalesPage() {
   const { visibleProducts, deductQuantities } = useProducts();
   const { addSale } = useSales();
   const { user } = useAuth();
+  const { posPreferences } = useSettings();
   const products = visibleProducts;
   const scanRef = useRef<InputRef>(null);
 
@@ -81,8 +83,12 @@ export default function SalesPage() {
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
-  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    () => posPreferences.defaultPaymentMethod
+  );
+  const [discountEnabled, setDiscountEnabled] = useState(
+    () => posPreferences.discountsEnabledByDefault
+  );
   const [discount, setDiscount] = useState(0);
   const [cashTendered, setCashTendered] = useState<number>(0);
 
@@ -246,7 +252,9 @@ export default function SalesPage() {
   }, [total]);
 
   const canCompleteSale =
-    cart.length > 0 && (paymentMethod !== 'Cash' || change >= 0);
+    cart.length > 0 &&
+    (paymentMethod !== 'Cash' || change >= 0) &&
+    (!posPreferences.requireCustomerName || customerName.trim().length > 0);
 
   const openPayment = useCallback(() => {
     if (cart.length === 0) {
@@ -270,6 +278,10 @@ export default function SalesPage() {
 
   const completeSale = async () => {
     if (!canCompleteSale) return;
+    if (posPreferences.requireCustomerName && !customerName.trim()) {
+      messageApi.warning('Enter a customer name to complete this sale');
+      return;
+    }
     try {
       await deductQuantities(cart.map((l) => ({ id: l.id, quantity: l.quantity })));
     } catch {

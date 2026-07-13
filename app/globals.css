@@ -252,6 +252,22 @@ body {
   background: #f8fafc !important;
 }
 
+.settings-section {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-section > * {
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-section .ant-input-number {
+  width: 140px !important;
+  max-width: 100%;
+}
+
 .safe-area-bottom {
   padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)) !important;
 }
@@ -266,5 +282,65 @@ body {
     padding-top: calc(4rem + env(safe-area-inset-top, 0px));
     padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   }
+}
+
+/* Enterprise UI animations */
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.2s ease-out;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.35s ease-out;
+}
+
+/* Staggered entrance for dashboard sections */
+.dashboard-stagger > * {
+  animation: slide-up 0.4s ease-out both;
+}
+.dashboard-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.dashboard-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.dashboard-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.dashboard-stagger > *:nth-child(4) { animation-delay: 180ms; }
+.dashboard-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.dashboard-stagger > *:nth-child(6) { animation-delay: 300ms; }
+
+.stock-management-tabs .ant-tabs-nav {
+  margin-bottom: 1rem;
+}
+
+.stock-management-tabs .ant-tabs-tab {
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
