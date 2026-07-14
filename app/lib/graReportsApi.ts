@@ -9,21 +9,38 @@ export interface GraTaxBreakdown {
   vat: number;
 }
 
+export interface GraSaleItemRow {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineDiscount: number;
+  lineTotal: number;
+  taxBreakdown: GraTaxBreakdown;
+  /** Optional extras if API includes them */
+  _id?: string;
+  productId?: string;
+  sku?: string;
+  lineSubtotal?: number;
+}
+
 export interface GraSaleRow {
-  _id: string;
   receiptId: string;
   date: string;
   time: string;
   customer: string;
+  paymentMethod: string;
   subtotal: number;
   discount: number;
   total: number;
-  paymentMethod: string;
   taxBreakdown: GraTaxBreakdown;
+  items?: GraSaleItemRow[];
+  /** Optional if API includes Mongo ids */
+  _id?: string;
 }
 
 export interface GraReportSummary {
   transactionCount: number;
+  itemCount: number;
   grossSales: number;
   totalDiscount: number;
   netSales: number;
@@ -36,7 +53,7 @@ export interface GraReportSummary {
 }
 
 export interface GraReportResponse {
-  period: { from: string; to: string };
+  period: { from: string | null; to: string | null };
   summary: GraReportSummary;
   sales: GraSaleRow[];
 }

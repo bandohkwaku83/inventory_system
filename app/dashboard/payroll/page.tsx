@@ -385,7 +385,7 @@ export default function PayrollPage() {
                 value={summary.totalNet}
                 precision={2}
                 prefix="GHS"
-                valueStyle={{ color: '#25395c' }}
+                styles={{ content: { color: '#25395c' } }}
               />
             </Card>
           </Col>
@@ -415,7 +415,7 @@ export default function PayrollPage() {
                 title="Draft Records"
                 value={summary.draftCount}
                 suffix={`/ ${periodEntries.length}`}
-                valueStyle={{ color: summary.draftCount > 0 ? '#d97706' : '#25395c' }}
+                styles={{ content: { color: summary.draftCount > 0 ? '#d97706' : '#25395c' } }}
               />
             </Card>
           </Col>
@@ -507,7 +507,7 @@ export default function PayrollPage() {
         title="Salary Breakdown"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={420}
+        size={420}
       >
         {selectedEntry && selectedEmployee && (
           <div className="space-y-5">

@@ -45,6 +45,7 @@ export interface ApiCategory {
 export interface ApiProduct {
   _id: string;
   sku?: string;
+  barcode?: string;
   name: string;
   category: ApiCategory | string;
   description?: string;
@@ -53,6 +54,8 @@ export interface ApiProduct {
   unit: string;
   stockQuantity: number;
   reorderAt: number;
+  maxStock?: number | null;
+  maximumStock?: number | null;
   imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
@@ -70,12 +73,22 @@ export interface MappedProduct {
   reorderLevel: number;
   lastRestocked: string;
   sku?: string;
+  barcode?: string;
+  maxStock?: number | null;
   description?: string;
   image?: string | null;
 }
 
 export function mapApiProduct(p: ApiProduct): MappedProduct {
   const cat = typeof p.category === 'object' && p.category ? p.category : null;
+  const maxStock =
+    typeof p.maxStock === 'number'
+      ? p.maxStock
+      : typeof p.maximumStock === 'number'
+        ? p.maximumStock
+        : p.maxStock === null || p.maximumStock === null
+          ? null
+          : undefined;
   return {
     id: p._id,
     name: p.name,
@@ -88,6 +101,8 @@ export function mapApiProduct(p: ApiProduct): MappedProduct {
     reorderLevel: p.reorderAt,
     lastRestocked: (p.updatedAt || p.createdAt || '').split('T')[0] ?? '',
     sku: p.sku?.trim() || undefined,
+    barcode: p.barcode?.trim() || undefined,
+    maxStock,
     description: p.description ?? '',
     image: resolveMediaUrl(p.imageUrl),
   };

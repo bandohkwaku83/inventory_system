@@ -165,7 +165,7 @@ export function StockOverviewPanel({ movements }: { movements: StockMovement[] }
               <Statistic
                 title={MOVEMENT_TYPE_LABELS[t]}
                 value={movements.filter((m) => m.type === t).length}
-                valueStyle={{ fontSize: '1.2rem', color: t === 'damaged' ? '#dc2626' : undefined }}
+                styles={{ content: { fontSize: '1.2rem', color: t === 'damaged' ? '#dc2626' : undefined } }}
               />
             </Card>
           </Col>
@@ -189,17 +189,17 @@ export function StockOverviewPanel({ movements }: { movements: StockMovement[] }
             <Title level={5} className="!mb-4">{selected.productName}</Title>
             <Row gutter={[16, 16]}>
               <Col xs={12} sm={8} md={4}>
-                <Statistic title="Available" value={selected.available} valueStyle={{ color: '#059669' }} />
+                <Statistic title="Available" value={selected.available} styles={{ content: { color: '#059669' } }} />
                 <Text type="secondary" className="text-[10px]">Sellable / issuable</Text>
               </Col>
               <Col xs={12} sm={8} md={4}>
-                <Statistic title="Reserved" value={selected.reserved} valueStyle={{ color: '#2563eb' }} />
+                <Statistic title="Reserved" value={selected.reserved} styles={{ content: { color: '#2563eb' } }} />
               </Col>
               <Col xs={12} sm={8} md={4}>
-                <Statistic title="Damaged" value={selected.damaged} valueStyle={{ color: '#dc2626' }} />
+                <Statistic title="Damaged" value={selected.damaged} styles={{ content: { color: '#dc2626' } }} />
               </Col>
               <Col xs={12} sm={8} md={4}>
-                <Statistic title="On Order" value={selected.onOrder} valueStyle={{ color: '#7c3aed' }} />
+                <Statistic title="On Order" value={selected.onOrder} styles={{ content: { color: '#7c3aed' } }} />
               </Col>
               <Col xs={12} sm={8} md={4}>
                 <Statistic
@@ -211,7 +211,7 @@ export function StockOverviewPanel({ movements }: { movements: StockMovement[] }
                 <Statistic
                   title="Minimum"
                   value={selected.minimumLevel}
-                  valueStyle={{ color: selected.available < selected.minimumLevel ? '#d97706' : undefined }}
+                  styles={{ content: { color: selected.available < selected.minimumLevel ? '#d97706' : undefined } }}
                 />
               </Col>
             </Row>

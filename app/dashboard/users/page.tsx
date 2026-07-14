@@ -75,7 +75,7 @@ export default function SystemUsersPage() {
         render: (_: unknown, r: SystemUser) => {
           const linked = r.staffId ? staff.find((s) => s.id === r.staffId) : undefined;
           return (
-            <Space direction="vertical" size={0}>
+            <Space orientation="vertical" size={0}>
               <span className="text-sm font-semibold">{r.name}</span>
               <span className="text-xs text-slate-500">{r.email}</span>
               {linked?.employeeNumber ? (

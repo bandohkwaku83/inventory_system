@@ -105,15 +105,30 @@ export function PurchasesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshPurchases = useCallback(async () => {
-    const res = await fetch(apiUrl('/api/purchases'));
-    if (!res.ok) throw new Error(await readApiError(res));
-    const raw = (await res.json()) as unknown;
-    const list = extractPurchasesArray(raw);
-    if (!list) throw new Error('Invalid purchases response');
-    const mapped = list
-      .map(safeMapApiPurchase)
-      .filter((x): x is NonNullable<typeof x> => x != null);
-    setPurchases(mapped);
+    const all: ReturnType<typeof mapApiPurchase>[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const res = await fetch(apiUrl(`/api/purchases?page=${page}&limit=100`));
+      if (!res.ok) throw new Error(await readApiError(res));
+      const raw = (await res.json()) as unknown;
+      const list = extractPurchasesArray(raw);
+      if (!list) throw new Error('Invalid purchases response');
+      const mapped = list
+        .map(safeMapApiPurchase)
+        .filter((x): x is NonNullable<typeof x> => x != null);
+      all.push(...mapped);
+
+      if (raw && typeof raw === 'object') {
+        const meta = raw as { totalPages?: number };
+        totalPages =
+          typeof meta.totalPages === 'number' && meta.totalPages > 0 ? meta.totalPages : 1;
+      }
+      page += 1;
+    } while (page <= totalPages);
+
+    setPurchases(all);
   }, []);
 
   const fetchPurchase = useCallback(async (id: string): Promise<Purchase | null> => {

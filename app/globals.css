@@ -344,3 +344,22 @@ body {
   font-weight: 600;
 }
 
+/* Ant Design 6 Tabs: keep pane content full-width (avoids form/table shrink-wrap) */
+.ant-tabs {
+  width: 100%;
+  min-width: 0;
+}
+.ant-tabs-content-holder,
+.ant-tabs-content,
+.ant-tabs-tabpane {
+  width: 100%;
+  min-width: 0;
+}
+.ant-form-vertical .ant-form-item-control-input-content > .ant-input,
+.ant-form-vertical .ant-form-item-control-input-content > textarea.ant-input,
+.ant-form-vertical .ant-form-item-control-input-content > .ant-select,
+.ant-form-vertical .ant-form-item-control-input-content > .ant-input-affix-wrapper,
+.ant-form-vertical .ant-form-item-control-input-content > .ant-picker {
+  width: 100%;
+}
+

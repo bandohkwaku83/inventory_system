@@ -13,8 +13,6 @@ import {
   SecurityOutlined as SecurityIcon,
   ChevronRight as ChevronRightIcon,
   Category as CategoryIcon,
-  Inventory2 as InventoryIcon,
-  PointOfSale as PointOfSaleIcon,
   Gavel as GavelIcon,
   WorkOutline as WorkOutlineIcon,
 } from '@mui/icons-material';
@@ -23,7 +21,6 @@ import {
   Checkbox,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -39,7 +36,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   useSettings,
   buildDepartmentTree,
-  collectDescendantIds,
+  collectDescendantNames,
   getDivisions,
   type Department,
   type ProductCategory,
@@ -64,8 +61,6 @@ type SettingsSection =
   | 'receipt'
   | 'categories'
   | 'departments'
-  | 'inventory'
-  | 'pos'
   | 'roles';
 
 const NAV_ITEMS: {
@@ -103,18 +98,6 @@ const NAV_ITEMS: {
     label: 'Departments',
     description: 'Departments and divisions',
     icon: WorkOutlineIcon,
-  },
-  {
-    id: 'inventory',
-    label: 'Inventory alerts',
-    description: 'Low-stock thresholds',
-    icon: InventoryIcon,
-  },
-  {
-    id: 'pos',
-    label: 'POS & sales',
-    description: 'Checkout defaults',
-    icon: PointOfSaleIcon,
   },
   {
     id: 'roles',
@@ -426,8 +409,6 @@ export default function SettingsPage() {
   const {
     businessInfo,
     receiptSettings,
-    inventoryPreferences,
-    posPreferences,
     categories,
     departments,
     roles,
@@ -437,8 +418,6 @@ export default function SettingsPage() {
     entitlementGroups,
     updateBusinessInfo,
     updateReceiptSettings,
-    updateInventoryPreferences,
-    updatePosPreferences,
     addCategory,
     updateCategory,
     deleteCategory,
@@ -542,15 +521,15 @@ export default function SettingsPage() {
       const values = await departmentForm.validateFields();
       const name = (values.name as string).trim();
       if (editingDivisionOnly && editingDepartment) {
-        updateDepartment(editingDepartment.id, { name });
+        await updateDepartment(editingDepartment.id, { name });
       } else if (editingDepartment) {
         const divisions = (values.divisions as { id?: string; name: string }[] | undefined) ?? [];
-        updateDepartmentBranch(editingDepartment.id, { name, divisions });
+        await updateDepartmentBranch(editingDepartment.id, { name, divisions });
       } else {
         const divisions = ((values.divisions as { name: string }[] | undefined) ?? [])
           .map((row) => row.name.trim())
           .filter(Boolean);
-        saveDepartmentBranch({ name, divisions });
+        await saveDepartmentBranch({ name, divisions });
       }
       setDepartmentModalOpen(false);
     } catch (e) {
@@ -558,15 +537,19 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteDepartment = (id: string) => {
-    const ids = collectDescendantIds(departments, id);
-    const count = staff.filter((s) => s.department && ids.has(s.department)).length;
+  const handleDeleteDepartment = async (id: string) => {
+    const names = collectDescendantNames(departments, id);
+    const count = staff.filter((s) => s.department && names.has(s.department)).length;
     if (count > 0) {
       message.warning(
-        `${count} staff member${count !== 1 ? 's are' : ' is'} assigned under this department. They will keep their division code until updated.`
+        `${count} staff member${count !== 1 ? 's are' : ' is'} assigned under this department. They will keep their assignment until updated.`
       );
     }
-    deleteDepartment(id);
+    try {
+      await deleteDepartment(id);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Could not delete department');
+    }
   };
 
   const openRoleModal = (role?: RoleDefinition) => {
@@ -628,7 +611,7 @@ export default function SettingsPage() {
             Settings
           </Title>
           <Text type="secondary" className="text-sm">
-            Manage your store profile, receipts, categories, departments, inventory alerts, POS defaults, and team access.
+            Manage your store profile, receipts, categories, departments, and team access.
           </Text>
         </div>
 
@@ -992,7 +975,7 @@ export default function SettingsPage() {
                       </Button>
                     }
                   />
-                  {departments.length === 0 ? (
+                  {departmentTree.length === 0 ? (
                     <div className="rounded-xl border border-slate-200/80 px-5 py-10 text-center text-sm text-slate-400">
                       No departments yet. Add a department such as Technical or Media, then add divisions under it.
                     </div>
@@ -1026,7 +1009,7 @@ export default function SettingsPage() {
                               <Popconfirm
                                 title="Delete this department?"
                                 description="All divisions under it will be removed too."
-                                onConfirm={() => handleDeleteDepartment(dept.id)}
+                                onConfirm={() => void handleDeleteDepartment(dept.id)}
                               >
                                 <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                               </Popconfirm>
@@ -1060,8 +1043,8 @@ export default function SettingsPage() {
                                     />
                                     <Popconfirm
                                       title="Delete this division?"
-                                      description="Staff assigned here keep their code until edited."
-                                      onConfirm={() => handleDeleteDepartment(division.id)}
+                                      description="Staff assigned here keep their name until edited."
+                                      onConfirm={() => void handleDeleteDepartment(division.id)}
                                     >
                                       <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                                     </Popconfirm>
@@ -1083,102 +1066,6 @@ export default function SettingsPage() {
                       <p className="text-2xl font-bold text-slate-900">{divisionCount}</p>
                       <p className="text-xs text-slate-500">Divisions</p>
                     </div>
-                  </div>
-                </>
-              ) : null}
-
-              {activeSection === 'inventory' ? (
-                <div className="settings-section w-full">
-                  <SectionHeader
-                    title="Inventory alerts"
-                    description="Configure when items are flagged as low stock on dashboards and inventory views."
-                  />
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 sm:p-5">
-                      <div className="mb-1 flex items-center gap-2">
-                        <InventoryIcon sx={{ fontSize: 18 }} className="shrink-0 text-slate-400" />
-                        <span className="text-sm font-medium text-slate-800">Low-stock threshold</span>
-                      </div>
-                      <p className="mb-4 text-xs leading-relaxed text-slate-500">
-                        Products at or below this quantity are highlighted as low stock. Individual
-                        products can still have their own reorder level on the Inventory page.
-                      </p>
-                      <InputNumber
-                        min={1}
-                        max={9999}
-                        value={inventoryPreferences.lowStockThreshold}
-                        onChange={(value) =>
-                          updateInventoryPreferences({
-                            lowStockThreshold: typeof value === 'number' ? value : 10,
-                          })
-                        }
-                        style={{ width: 140 }}
-                      />
-                    </div>
-                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
-                      <p className="text-sm font-medium text-slate-800">Saved automatically</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                        Inventory alert preferences are stored on this device and apply immediately.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {activeSection === 'pos' ? (
-                <>
-                  <SectionHeader
-                    title="POS & sales"
-                    description="Default checkout behaviour for the point-of-sale screen."
-                  />
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5">
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">Default payment method</p>
-                        <p className="mt-0.5 text-xs text-slate-500">Pre-selected when opening checkout</p>
-                      </div>
-                      <Select
-                        value={posPreferences.defaultPaymentMethod}
-                        onChange={(value: 'Cash' | 'Mobile Money') =>
-                          updatePosPreferences({ defaultPaymentMethod: value })
-                        }
-                        className="min-w-[140px]"
-                        options={[
-                          { value: 'Cash', label: 'Cash' },
-                          { value: 'Mobile Money', label: 'Mobile Money' },
-                        ]}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5">
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">Discounts enabled by default</p>
-                        <p className="mt-0.5 text-xs text-slate-500">Show the discount field when starting a sale</p>
-                      </div>
-                      <Switch
-                        checked={posPreferences.discountsEnabledByDefault}
-                        onChange={(checked) =>
-                          updatePosPreferences({ discountsEnabledByDefault: checked })
-                        }
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3.5">
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">Require customer name</p>
-                        <p className="mt-0.5 text-xs text-slate-500">Prompt for customer name before completing sale</p>
-                      </div>
-                      <Switch
-                        checked={posPreferences.requireCustomerName}
-                        onChange={(checked) =>
-                          updatePosPreferences({ requireCustomerName: checked })
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-6 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4">
-                    <p className="text-sm font-medium text-slate-800">Saved automatically</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      POS preferences are stored on this device and apply to new checkout sessions.
-                    </p>
                   </div>
                 </>
               ) : null}
@@ -1421,12 +1308,6 @@ export default function SettingsPage() {
                   </div>
                 )}
               </Form.List>
-            ) : null}
-
-            {editingDepartment ? (
-              <p className="mt-3 text-xs text-slate-500">
-                Code: <span className="font-mono">{editingDepartment.id}</span> (fixed for staff records)
-              </p>
             ) : null}
           </Form>
         </Modal>

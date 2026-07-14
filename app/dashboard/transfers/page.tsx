@@ -3,11 +3,11 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-/** Legacy route — redirects to Stock Management transfers tab. */
+/** Legacy route — redirects to warehouse transfers list. */
 export default function TransfersRedirectPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/dashboard/stock?tab=history');
+    router.replace('/dashboard/warehouse-transfers');
   }, [router]);
   return null;
 }

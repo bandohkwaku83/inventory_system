@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Card,
   Typography,
   Table,
@@ -13,21 +14,25 @@ import {
   Statistic,
   Timeline,
   Button,
+  message,
 } from 'antd';
 import type { TableProps } from 'antd';
 import { SearchOutlined, DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
 import DashboardLayout from '../../components/DashboardLayout';
 import {
-  ACTIVITY_LOG,
-  locationName,
-  relativeTime,
-  type ActivityEntry,
-  type ActivityAction,
-} from '../../lib/enterpriseDummyData';
+  fetchAuditLogs,
+  fetchAuditLogsMeta,
+  formatAuditAction,
+  formatAuditDate,
+  formatAuditPerson,
+  relativeAuditTime,
+  type AuditLogEntry,
+  type AuditLogsMeta,
+} from '../../lib/auditLogsApi';
 
 const { Title, Text } = Typography;
 
-const ACTION_COLORS: Record<ActivityAction, string> = {
+const ACTION_COLORS: Record<string, string> = {
   create: 'green',
   update: 'blue',
   delete: 'red',
@@ -36,63 +41,112 @@ const ACTION_COLORS: Record<ActivityAction, string> = {
   login: 'default',
   export: 'purple',
   transfer: 'geekblue',
+  submit: 'blue',
+  issue: 'orange',
+  receive: 'green',
 };
 
-const ACTION_LABELS: Record<ActivityAction, string> = {
-  create: 'Created',
-  update: 'Updated',
-  delete: 'Deleted',
-  approve: 'Approved',
-  reject: 'Rejected',
-  login: 'Login',
-  export: 'Exported',
-  transfer: 'Transferred',
-};
+function actionColor(action: string): string {
+  return ACTION_COLORS[action] ?? 'default';
+}
 
 export default function ActivityPage() {
+  const [items, setItems] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<AuditLogsMeta | null>(null);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [actionFilter, setActionFilter] = useState<ActivityAction | 'all'>('all');
+  const [actionFilter, setActionFilter] = useState<string>('all');
+  const [entityFilter, setEntityFilter] = useState<string>('all');
   const [view, setView] = useState<'table' | 'timeline'>('table');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 50;
 
-  const filtered = useMemo(() => {
-    let list = ACTIVITY_LOG;
-    if (actionFilter !== 'all') list = list.filter((a) => a.action === actionFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (a) =>
-          a.description.toLowerCase().includes(q) ||
-          a.user.toLowerCase().includes(q) ||
-          a.entity.toLowerCase().includes(q) ||
-          a.entityId.toLowerCase().includes(q)
-      );
+  useEffect(() => {
+    void fetchAuditLogsMeta()
+      .then(setMeta)
+      .catch(() => setMeta(null));
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAuditLogs({
+        page,
+        limit,
+        action: actionFilter === 'all' ? undefined : actionFilter,
+        entityType: entityFilter === 'all' ? undefined : entityFilter,
+        q: search.trim() || undefined,
+      });
+      setItems(data.items);
+      setTotal(data.total);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to load audit log';
+      setError(msg);
+      setItems([]);
+      setTotal(0);
+      message.error(msg);
+    } finally {
+      setLoading(false);
     }
-    return list;
-  }, [search, actionFilter]);
+  }, [page, actionFilter, entityFilter, search]);
 
-  const todayCount = ACTIVITY_LOG.filter((a) => {
-    const d = new Date(a.timestamp);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const todayCount = useMemo(() => {
     const now = new Date();
-    return d.toDateString() === now.toDateString();
-  }).length;
+    return items.filter((a) => {
+      const d = new Date(a.createdAt);
+      return d.toDateString() === now.toDateString();
+    }).length;
+  }, [items]);
 
-  const columns: TableProps<ActivityEntry>['columns'] = [
+  const uniqueUsers = useMemo(
+    () => new Set(items.map((a) => a.user?.id || a.user?.email || '').filter(Boolean)).size,
+    [items]
+  );
+
+  const actionOptions = useMemo(() => {
+    const actions = meta?.actions?.length
+      ? meta.actions
+      : Array.from(new Set(items.map((i) => i.action).filter(Boolean)));
+    return [
+      { value: 'all', label: 'All actions' },
+      ...actions.map((a) => ({ value: a, label: formatAuditAction(a) })),
+    ];
+  }, [meta, items]);
+
+  const entityOptions = useMemo(() => {
+    const types = meta?.entityTypes?.length
+      ? meta.entityTypes
+      : Array.from(new Set(items.map((i) => i.entityType).filter(Boolean)));
+    return [
+      { value: 'all', label: 'All entities' },
+      ...types.map((t) => ({
+        value: t,
+        label: t
+          .split('_')
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' '),
+      })),
+    ];
+  }, [meta, items]);
+
+  const columns: TableProps<AuditLogEntry>['columns'] = [
     {
       title: 'Time',
-      dataIndex: 'timestamp',
-      key: 'timestamp',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
       width: 140,
       render: (v: string) => (
         <div>
-          <p className="text-xs font-medium text-slate-700">
-            {relativeTime(v)}
-          </p>
-          <p className="text-[10px] text-slate-400">
-            {new Date(v).toLocaleTimeString('en-US', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </p>
+          <p className="text-xs font-medium text-slate-700">{relativeAuditTime(v)}</p>
+          <p className="text-[10px] text-slate-400">{formatAuditDate(v)}</p>
         </div>
       ),
     },
@@ -100,10 +154,8 @@ export default function ActivityPage() {
       title: 'Action',
       dataIndex: 'action',
       key: 'action',
-      width: 100,
-      render: (a: ActivityAction) => (
-        <Tag color={ACTION_COLORS[a]}>{ACTION_LABELS[a]}</Tag>
-      ),
+      width: 110,
+      render: (a: string) => <Tag color={actionColor(a)}>{formatAuditAction(a)}</Tag>,
     },
     {
       title: 'Description',
@@ -111,9 +163,10 @@ export default function ActivityPage() {
       key: 'description',
       render: (v: string, r) => (
         <div>
-          <p className="text-sm text-slate-800">{v}</p>
+          <p className="text-sm text-slate-800">{v || '—'}</p>
           <p className="font-mono text-[10px] text-slate-400">
-            {r.entity} · {r.entityId}
+            {r.entityType || '—'}
+            {r.entityId ? ` · ${r.entityId}` : ''}
           </p>
         </div>
       ),
@@ -121,49 +174,33 @@ export default function ActivityPage() {
     {
       title: 'User',
       key: 'user',
-      width: 160,
+      width: 180,
       render: (_, r) => (
         <div>
-          <p className="text-xs font-semibold text-slate-700">{r.user}</p>
-          <p className="text-[10px] text-slate-400">{r.userRole}</p>
+          <p className="text-xs font-semibold text-slate-700">
+            {formatAuditPerson(r.user)}
+          </p>
+          {r.user?.email ? (
+            <p className="text-[10px] text-slate-400">{r.user.email}</p>
+          ) : null}
         </div>
-      ),
-    },
-    {
-      title: 'Location',
-      key: 'location',
-      width: 130,
-      render: (_, r) =>
-        r.locationId ? (
-          <span className="text-xs text-slate-600">{locationName(r.locationId)}</span>
-        ) : (
-          '—'
-        ),
-    },
-    {
-      title: 'IP',
-      dataIndex: 'ip',
-      key: 'ip',
-      width: 110,
-      render: (v?: string) => (
-        <span className="font-mono text-[10px] text-slate-400">{v ?? '—'}</span>
       ),
     },
   ];
 
   const exportCsv = () => {
-    const header = 'Timestamp,Action,Entity,Entity ID,Description,User,Role,Location,IP\n';
-    const rows = filtered
+    const header = 'Timestamp,Action,Entity,Entity ID,Description,User,Email\n';
+    const rows = items
       .map(
         (a) =>
-          `"${a.timestamp}",${a.action},${a.entity},${a.entityId},"${a.description}",${a.user},${a.userRole},${a.locationId ?? ''},${a.ip ?? ''}`
+          `"${a.createdAt}",${a.action},${a.entityType},${a.entityId},"${(a.description || '').replace(/"/g, '""')}",${a.user?.name ?? ''},${a.user?.email ?? ''}`
       )
       .join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'activity-log.csv';
+    link.download = 'audit-log.csv';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -174,10 +211,10 @@ export default function ActivityPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <Title level={4} className="!mb-1">
-              Activity Log
+              Audit Log
             </Title>
             <Text type="secondary">
-              Audit trail — who did what, when, and from where
+              Audit trail — who did what, when, and on which entity
             </Text>
           </div>
           <div className="flex gap-2">
@@ -188,29 +225,40 @@ export default function ActivityPage() {
             >
               {view === 'table' ? 'Timeline' : 'Table'}
             </Button>
-            <Button icon={<DownloadOutlined />} onClick={exportCsv}>
+            <Button icon={<DownloadOutlined />} onClick={exportCsv} disabled={!items.length}>
               Export
             </Button>
           </div>
         </div>
 
+        {error ? (
+          <Alert
+            type="error"
+            showIcon
+            message="Could not load audit log"
+            description={error}
+            action={
+              <Button size="small" onClick={() => void load()}>
+                Retry
+              </Button>
+            }
+          />
+        ) : null}
+
         <Row gutter={[16, 16]}>
           <Col xs={12} sm={8}>
             <Card size="small" className="!rounded-xl">
-              <Statistic title="Events today" value={todayCount} />
+              <Statistic title="Events today (page)" value={todayCount} />
             </Card>
           </Col>
           <Col xs={12} sm={8}>
             <Card size="small" className="!rounded-xl">
-              <Statistic title="Total logged" value={ACTIVITY_LOG.length} />
+              <Statistic title="Total logged" value={total} />
             </Card>
           </Col>
           <Col xs={24} sm={8}>
             <Card size="small" className="!rounded-xl">
-              <Statistic
-                title="Unique users"
-                value={new Set(ACTIVITY_LOG.map((a) => a.user)).size}
-              />
+              <Statistic title="Users (page)" value={uniqueUsers} />
             </Card>
           </Col>
         </Row>
@@ -218,50 +266,81 @@ export default function ActivityPage() {
         <Card className="!rounded-xl">
           <div className="table-toolbar mb-4 flex flex-wrap items-center gap-3">
             <Input
-              placeholder="Search activity…"
+              placeholder="Search audit log…"
               prefix={<SearchOutlined />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onPressEnter={() => {
+                setSearch(searchInput);
+                setPage(1);
+              }}
+              onBlur={() => {
+                if (searchInput !== search) {
+                  setSearch(searchInput);
+                  setPage(1);
+                }
+              }}
               className="max-w-xs"
               allowClear
+              onClear={() => {
+                setSearchInput('');
+                setSearch('');
+                setPage(1);
+              }}
             />
             <Select
               value={actionFilter}
-              onChange={setActionFilter}
+              onChange={(v) => {
+                setActionFilter(v);
+                setPage(1);
+              }}
               className="min-w-[140px]"
-              options={[
-                { value: 'all', label: 'All actions' },
-                ...Object.entries(ACTION_LABELS).map(([v, l]) => ({
-                  value: v,
-                  label: l,
-                })),
-              ]}
+              options={actionOptions}
+            />
+            <Select
+              value={entityFilter}
+              onChange={(v) => {
+                setEntityFilter(v);
+                setPage(1);
+              }}
+              className="min-w-[160px]"
+              options={entityOptions}
             />
           </div>
 
           {view === 'table' ? (
-            <Table<ActivityEntry>
+            <Table<AuditLogEntry>
               columns={columns}
-              dataSource={filtered}
+              dataSource={items}
               rowKey="id"
-              pagination={{ pageSize: 15, showTotal: (t) => `${t} events` }}
+              loading={loading}
+              pagination={{
+                current: page,
+                pageSize: limit,
+                total,
+                showSizeChanger: false,
+                showTotal: (t) => `${t} events`,
+                onChange: (p) => setPage(p),
+              }}
               scroll={{ x: 800 }}
             />
           ) : (
             <Timeline
               className="px-2 pt-2"
-              items={filtered.map((a) => ({
-                color: ACTION_COLORS[a.action] === 'default' ? 'gray' : ACTION_COLORS[a.action],
-                children: (
+              items={items.map((a) => ({
+                color: actionColor(a.action) === 'default' ? 'gray' : actionColor(a.action),
+                content: (
                   <div className="pb-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Tag color={ACTION_COLORS[a.action]}>{ACTION_LABELS[a.action]}</Tag>
-                      <span className="text-[11px] text-slate-400">{relativeTime(a.timestamp)}</span>
+                      <Tag color={actionColor(a.action)}>{formatAuditAction(a.action)}</Tag>
+                      <span className="text-[11px] text-slate-400">
+                        {relativeAuditTime(a.createdAt)}
+                      </span>
                     </div>
-                    <p className="mt-1 text-sm text-slate-800">{a.description}</p>
+                    <p className="mt-1 text-sm text-slate-800">{a.description || '—'}</p>
                     <p className="text-xs text-slate-500">
-                      {a.user} · {a.userRole}
-                      {a.locationId ? ` · ${locationName(a.locationId)}` : ''}
+                      {formatAuditPerson(a.user)}
+                      {a.entityType ? ` · ${a.entityType}` : ''}
                     </p>
                   </div>
                 ),

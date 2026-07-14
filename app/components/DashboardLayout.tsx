@@ -31,6 +31,10 @@ import {
   People as PeopleIcon,
   FactCheck as FactCheckIcon,
   History as HistoryIcon,
+  MoveToInbox as MoveToInboxIcon,
+  Outbox as OutboxIcon,
+  Checklist as ChecklistIcon,
+  Sms as SmsIcon,
 } from '@mui/icons-material';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
@@ -40,7 +44,9 @@ import {
   PATH_PERMISSIONS,
   defaultLandingPath,
   userCanAccessPath,
+  userHasPermission,
 } from '../lib/permissions';
+import { fetchApprovalsSummary } from '../lib/approvalsApi';
 import { BRAND, BRAND_DEEP, SYSTEM_LOGO } from '../lib/brand';
 import { useActionLoader } from './LoaderProvider';
 import GlobalSearch from './GlobalSearch';
@@ -79,7 +85,11 @@ const menuSections: MenuSection[] = [
     heading: 'Warehouse & Stock',
     items: [
       { text: 'Warehouses', icon: WarehouseIcon, path: '/dashboard/warehouses' },
-      { text: 'Stock Management', icon: StockMgmtIcon, path: '/dashboard/stock' },
+      { text: 'Goods Receipts', icon: MoveToInboxIcon, path: '/dashboard/goods-receipts' },
+      { text: 'Goods Issues', icon: OutboxIcon, path: '/dashboard/goods-issues' },
+      { text: 'Stock Transfers', icon: SwapHorizIcon, path: '/dashboard/warehouse-transfers' },
+      { text: 'Stock Counts', icon: ChecklistIcon, path: '/dashboard/stock-counts' },
+      { text: 'Stock Movements', icon: StockMgmtIcon, path: '/dashboard/stock-movements' },
     ],
   },
   {
@@ -112,12 +122,15 @@ const menuSections: MenuSection[] = [
     heading: 'Governance',
     items: [
       { text: 'Approvals', icon: FactCheckIcon, path: '/dashboard/approvals' },
-      { text: 'Activity Log', icon: HistoryIcon, path: '/dashboard/activity' },
+      { text: 'Audit Log', icon: HistoryIcon, path: '/dashboard/activity' },
     ],
   },
   {
     heading: 'System',
-    items: [{ text: 'Settings', icon: SettingsIcon, path: '/dashboard/settings' }],
+    items: [
+      { text: 'SMS', icon: SmsIcon, path: '/dashboard/sms' },
+      { text: 'Settings', icon: SettingsIcon, path: '/dashboard/settings' },
+    ],
   },
 ];
 
@@ -172,6 +185,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [navQuery, setNavQuery] = useState('');
+  const [approvalsPending, setApprovalsPending] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -189,6 +203,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (isBootstrapping || !user) return;
+    if (!userHasPermission(user.role, user.entitlements, 'approvals', roles)) {
+      setApprovalsPending(0);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      void fetchApprovalsSummary()
+        .then((s) => {
+          if (!cancelled) setApprovalsPending(s.pending ?? 0);
+        })
+        .catch(() => {
+          if (!cancelled) setApprovalsPending(0);
+        });
+    };
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [isBootstrapping, user, roles, pathname]);
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
   const handleProfileMenuToggle = () => setProfileMenuOpen(!profileMenuOpen);
@@ -334,6 +372,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 {section.items.map((item) => {
                   const isSelected = isPathActive(pathname, item.path);
                   const Icon = item.icon;
+                  const showPendingBadge =
+                    item.path === '/dashboard/approvals' && approvalsPending > 0;
                   return (
                     <li key={item.path}>
                       <button
@@ -361,7 +401,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         >
                           <Icon className="!text-[1rem]" />
                         </span>
-                        <span className="truncate text-[0.875rem] leading-tight">{item.text}</span>
+                        <span className="min-w-0 flex-1 truncate text-[0.875rem] leading-tight">
+                          {item.text}
+                        </span>
+                        {showPendingBadge ? (
+                          <span
+                            className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-900"
+                            aria-label={`${approvalsPending} pending approvals`}
+                          >
+                            {approvalsPending > 99 ? '99+' : approvalsPending}
+                          </span>
+                        ) : null}
                       </button>
                     </li>
                   );

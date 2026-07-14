@@ -239,7 +239,7 @@ export default function ProformaInvoicesPage() {
             </Form.Item>
           </div>
           <Form.Item name="discount" label="Discount (GHS)">
-            <InputNumber min={0} max={subtotal} className="w-full sm:w-48" addonBefore="GHS" />
+            <InputNumber min={0} max={subtotal} className="w-full sm:w-48" prefix="GHS" />
           </Form.Item>
           <Form.Item name="notes" label="Notes">
             <Input.TextArea rows={2} placeholder="Optional terms or notes" />

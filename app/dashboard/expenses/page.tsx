@@ -353,7 +353,7 @@ export default function ExpensesPage() {
                 value={summary.paidAmount}
                 precision={2}
                 prefix={currency}
-                valueStyle={{ color: '#25395c' }}
+                styles={{ content: { color: '#25395c' } }}
               />
             </Card>
           </Col>
@@ -364,7 +364,7 @@ export default function ExpensesPage() {
                 value={summary.pendingAmount}
                 precision={2}
                 prefix={currency}
-                valueStyle={{ color: '#d97706' }}
+                styles={{ content: { color: '#d97706' } }}
               />
             </Card>
           </Col>

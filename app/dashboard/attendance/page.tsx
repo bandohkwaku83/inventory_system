@@ -552,7 +552,7 @@ export default function StaffManagementPage() {
                 title="Present Today"
                 value={summary.present}
                 prefix={<CheckCircleOutlined />}
-                valueStyle={{ color: '#25395c' }}
+                styles={{ content: { color: '#25395c' } }}
               />
             </Card>
           </Col>
@@ -562,7 +562,7 @@ export default function StaffManagementPage() {
                 title="Absent Today"
                 value={summary.absent}
                 prefix={<CloseCircleOutlined />}
-                valueStyle={{ color: summary.absent > 0 ? '#dc2626' : undefined }}
+                styles={{ content: { color: summary.absent > 0 ? '#dc2626' : undefined } }}
               />
             </Card>
           </Col>
@@ -572,7 +572,7 @@ export default function StaffManagementPage() {
                 title="Late Today"
                 value={summary.late}
                 prefix={<ClockCircleOutlined />}
-                valueStyle={{ color: summary.late > 0 ? '#d97706' : undefined }}
+                styles={{ content: { color: summary.late > 0 ? '#d97706' : undefined } }}
               />
             </Card>
           </Col>
@@ -582,7 +582,7 @@ export default function StaffManagementPage() {
                 title="Unmarked"
                 value={summary.unmarked}
                 prefix={<CalendarOutlined />}
-                valueStyle={{ color: summary.unmarked > 0 ? '#6366f1' : '#25395c' }}
+                styles={{ content: { color: summary.unmarked > 0 ? '#6366f1' : '#25395c' } }}
               />
             </Card>
           </Col>
@@ -978,7 +978,7 @@ export default function StaffManagementPage() {
           setViewDrawerOpen(false);
           setViewingStaff(null);
         }}
-        width={560}
+        size={560}
         styles={{ body: { paddingTop: 20, paddingBottom: 28 } }}
         extra={
           viewingStaff ? (

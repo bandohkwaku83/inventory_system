@@ -32,16 +32,23 @@ import {
 } from '../lib/permissions';
 import {
   DEFAULT_DEPARTMENTS,
-  collectDescendantIds,
-  normalizeDepartments,
-  uniqueDepartmentId,
+  getDivisions,
   type Department,
 } from '../lib/departments';
+import {
+  createDepartment,
+  deleteDepartmentApi,
+  fetchDepartments,
+  removeDivision,
+  renameDivision,
+  updateDepartmentApi,
+} from '../lib/departmentsApi';
 
 export type { Department };
 export {
   buildDepartmentTree,
   collectDescendantIds,
+  collectDescendantNames,
   departmentDisplayName,
   departmentSelectGroups,
   getChildDepartments,
@@ -123,7 +130,6 @@ interface StoredSettings {
   businessInfo?: BusinessInfo;
   receiptSettings?: ReceiptSettings;
   categories?: ProductCategory[];
-  departments?: Department[];
   inventoryPreferences?: InventoryPreferences;
   posPreferences?: PosPreferences;
 }
@@ -142,6 +148,7 @@ interface SettingsContextValue {
   entitlementGroups: PermissionGroup[];
   refreshRoles: () => Promise<void>;
   refreshAppSettings: () => Promise<void>;
+  refreshDepartments: () => Promise<void>;
   updateBusinessInfo: (info: Partial<BusinessInfo>) => void;
   updateReceiptSettings: (settings: Partial<ReceiptSettings>) => void;
   updateInventoryPreferences: (prefs: Partial<InventoryPreferences>) => void;
@@ -149,24 +156,19 @@ interface SettingsContextValue {
   addCategory: (name: string) => Promise<ProductCategory>;
   updateCategory: (id: string, name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
-  addDepartment: (input: {
-    name: string;
-    description?: string;
-    parentId?: string | null;
-  }) => Department;
   saveDepartmentBranch: (input: {
     name: string;
     divisions?: string[];
-  }) => Department;
+  }) => Promise<Department>;
   updateDepartment: (
     id: string,
-    updates: Partial<Pick<Department, 'name' | 'description' | 'parentId'>>
-  ) => void;
+    updates: Partial<Pick<Department, 'name'>>
+  ) => Promise<void>;
   updateDepartmentBranch: (
     id: string,
     input: { name: string; divisions: { id?: string; name: string }[] }
-  ) => void;
-  deleteDepartment: (id: string) => void;
+  ) => Promise<void>;
+  deleteDepartment: (id: string) => Promise<void>;
   saveBusinessInfo: () => Promise<void>;
   saveReceiptSettings: () => Promise<void>;
   uploadLogo: (file: File) => Promise<void>;
@@ -187,11 +189,6 @@ function slugify(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-}
-
-function loadDepartments(stored?: Department[]): Department[] {
-  if (!stored?.length) return DEFAULT_DEPARTMENTS;
-  return normalizeDepartments(stored);
 }
 
 function loadSettings(): StoredSettings {
@@ -215,7 +212,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const { runWithLoader } = useActionLoader();
   const stored = useMemo(() => loadSettings(), []);
   const storedCategories = stored.categories;
-  const storedDepartments = stored.departments;
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
     ...DEFAULT_BUSINESS,
     ...stored.businessInfo,
@@ -235,9 +231,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<ProductCategory[]>(
     stored.categories?.length ? stored.categories : DEFAULT_CATEGORIES
   );
-  const [departments, setDepartments] = useState<Department[]>(() =>
-    loadDepartments(storedDepartments)
-  );
+  const [departments, setDepartments] = useState<Department[]>(DEFAULT_DEPARTMENTS);
   const [roles, setRoles] = useState<RoleDefinition[]>(DEFAULT_ROLES);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -249,11 +243,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       businessInfo,
       receiptSettings,
       categories,
-      departments,
       inventoryPreferences,
       posPreferences,
     });
-  }, [businessInfo, receiptSettings, categories, departments, inventoryPreferences, posPreferences]);
+  }, [businessInfo, receiptSettings, categories, inventoryPreferences, posPreferences]);
 
   const applyAppSettings = useCallback(
     (data: {
@@ -295,6 +288,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
     setCategories(next);
+  }, []);
+
+  const refreshDepartments = useCallback(async () => {
+    const next = await fetchDepartments();
+    setDepartments(next);
   }, []);
 
   const refreshRoles = useCallback(async () => {
@@ -350,6 +348,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [refreshCategories, storedCategories]);
+
+  useEffect(() => {
+    if (!user) {
+      setDepartments(DEFAULT_DEPARTMENTS);
+      return;
+    }
+    void (async () => {
+      try {
+        await refreshDepartments();
+      } catch {
+        /* keep empty until server is available */
+      }
+    })();
+  }, [user, refreshDepartments]);
 
   const addCategory = useCallback(
     async (name: string): Promise<ProductCategory> => {
@@ -415,125 +427,94 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     [refreshCategories, runWithLoader]
   );
 
-  const addDepartment = useCallback(
-    (input: {
-      name: string;
-      description?: string;
-      parentId?: string | null;
-    }): Department => {
-      const name = input.name.trim();
-      if (!name) throw new Error('Department name is required');
-      const parentId = input.parentId ?? null;
-      if (parentId && !departments.some((d) => d.id === parentId && !d.parentId)) {
-        throw new Error('Parent department not found');
-      }
-      const created: Department = {
-        id: uniqueDepartmentId(name, departments),
-        name,
-        description: input.description?.trim() || '',
-        parentId,
-      };
-      setDepartments((prev) => [...prev, created]);
-      return created;
-    },
-    [departments]
-  );
-
-  const saveDepartmentBranch = useCallback((input: { name: string; divisions?: string[] }) => {
-    const name = input.name.trim();
-    if (!name) throw new Error('Department name is required');
-    const divisionNames = (input.divisions ?? []).map((d) => d.trim()).filter(Boolean);
-    let created: Department | null = null;
-    setDepartments((prev) => {
-      const parent: Department = {
-        id: uniqueDepartmentId(name, prev),
-        name,
-        description: '',
-        parentId: null,
-      };
-      created = parent;
-      const next: Department[] = [...prev, parent];
-      for (const divName of divisionNames) {
-        next.push({
-          id: uniqueDepartmentId(divName, next),
-          name: divName,
-          description: '',
-          parentId: parent.id,
-        });
-      }
-      return next;
-    });
-    if (!created) throw new Error('Could not create department');
-    return created;
-  }, []);
-
-  const updateDepartmentBranch = useCallback(
-    (id: string, input: { name: string; divisions: { id?: string; name: string }[] }) => {
-      const name = input.name.trim();
-      if (!name) throw new Error('Department name is required');
-      setDepartments((prev) => {
-        const dept = prev.find((d) => d.id === id && !d.parentId);
-        if (!dept) throw new Error('Department not found');
-        const divisionRows = input.divisions
-          .map((row) => ({ id: row.id, name: row.name.trim() }))
-          .filter((row) => row.name);
-        const keptIds = new Set(divisionRows.map((row) => row.id).filter(Boolean) as string[]);
-        const existingChildren = prev.filter((d) => d.parentId === id);
-        const removedIds = new Set(
-          existingChildren.filter((child) => !keptIds.has(child.id)).map((child) => child.id)
-        );
-        let next = prev
-          .filter((d) => !removedIds.has(d.id))
-          .map((d) => (d.id === id ? { ...d, name } : d));
-        for (const row of divisionRows) {
-          if (row.id) {
-            next = next.map((d) => (d.id === row.id ? { ...d, name: row.name } : d));
-          } else {
-            next.push({
-              id: uniqueDepartmentId(row.name, next),
-              name: row.name,
-              description: '',
-              parentId: id,
-            });
-          }
-        }
-        return next;
+  const saveDepartmentBranch = useCallback(
+    async (input: { name: string; divisions?: string[] }): Promise<Department> => {
+      return runWithLoader(async () => {
+        const name = input.name.trim();
+        if (!name) throw new Error('Department name is required');
+        const divisions = (input.divisions ?? []).map((d) => d.trim()).filter(Boolean);
+        const created = await createDepartment({ name, divisions });
+        await refreshDepartments();
+        const parent = created.find((d) => !d.parentId) ?? created[0];
+        if (!parent) throw new Error('Could not create department');
+        return parent;
       });
     },
-    []
+    [refreshDepartments, runWithLoader]
+  );
+
+  const updateDepartmentBranch = useCallback(
+    async (
+      id: string,
+      input: { name: string; divisions: { id?: string; name: string }[] }
+    ) => {
+      return runWithLoader(async () => {
+        const name = input.name.trim();
+        if (!name) throw new Error('Department name is required');
+        const divisions = input.divisions
+          .map((row) => ({
+            id: row.id,
+            name: row.name.trim(),
+          }))
+          .filter((row) => row.name);
+        await updateDepartmentApi(id, {
+          name,
+          divisions: divisions.map((row) =>
+            row.id ? { _id: row.id, name: row.name } : { name: row.name }
+          ),
+        });
+        await refreshDepartments();
+      });
+    },
+    [refreshDepartments, runWithLoader]
   );
 
   const updateDepartment = useCallback(
-    (
-      id: string,
-      updates: Partial<Pick<Department, 'name' | 'description' | 'parentId'>>
-    ) => {
-      setDepartments((prev) =>
-        prev.map((dept) => {
-          if (dept.id !== id) return dept;
-          const nextParentId =
-            updates.parentId !== undefined ? updates.parentId : dept.parentId;
-          if (nextParentId === id) return dept;
-          return {
-            ...dept,
-            ...(updates.name !== undefined ? { name: updates.name.trim() || dept.name } : {}),
-            ...(updates.description !== undefined
-              ? { description: updates.description.trim() }
-              : {}),
-            ...(updates.parentId !== undefined ? { parentId: nextParentId } : {}),
-          };
-        })
-      );
+    async (id: string, updates: Partial<Pick<Department, 'name'>>) => {
+      return runWithLoader(async () => {
+        const dept = departments.find((d) => d.id === id);
+        if (!dept) throw new Error('Department not found');
+        const name = updates.name?.trim();
+        if (!name) throw new Error('Name is required');
+
+        if (dept.parentId) {
+          const siblings = getDivisions(departments, dept.parentId);
+          await renameDivision(
+            dept.parentId,
+            dept.id,
+            name,
+            siblings.map((d) => ({ id: d.id, name: d.name }))
+          );
+        } else {
+          await updateDepartmentApi(id, { name });
+        }
+        await refreshDepartments();
+      });
     },
-    []
+    [departments, refreshDepartments, runWithLoader]
   );
 
-  const deleteDepartment = useCallback((id: string) => {
-    setDepartments((prev) => {
-      const toRemove = collectDescendantIds(prev, id);
-      return prev.filter((d) => !toRemove.has(d.id));
-    });
-  }, []);
+  const deleteDepartment = useCallback(
+    async (id: string) => {
+      return runWithLoader(async () => {
+        const dept = departments.find((d) => d.id === id);
+        if (!dept) throw new Error('Department not found');
+
+        if (dept.parentId) {
+          const siblings = getDivisions(departments, dept.parentId);
+          await removeDivision(
+            dept.parentId,
+            dept.id,
+            siblings.map((d) => ({ id: d.id, name: d.name }))
+          );
+        } else {
+          await deleteDepartmentApi(id);
+        }
+        await refreshDepartments();
+      });
+    },
+    [departments, refreshDepartments, runWithLoader]
+  );
 
   const updateBusinessInfo = useCallback((info: Partial<BusinessInfo>) => {
     setBusinessInfo((prev) => ({ ...prev, ...info }));
@@ -720,6 +701,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       entitlementGroups,
       refreshRoles,
       refreshAppSettings,
+      refreshDepartments,
       updateBusinessInfo,
       updateReceiptSettings,
       updateInventoryPreferences,
@@ -727,7 +709,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       addCategory,
       updateCategory,
       deleteCategory,
-      addDepartment,
       saveDepartmentBranch,
       updateDepartment,
       updateDepartmentBranch,
@@ -754,6 +735,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       entitlementGroups,
       refreshRoles,
       refreshAppSettings,
+      refreshDepartments,
       updateBusinessInfo,
       updateReceiptSettings,
       updateInventoryPreferences,
@@ -761,7 +743,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       addCategory,
       updateCategory,
       deleteCategory,
-      addDepartment,
       saveDepartmentBranch,
       updateDepartment,
       updateDepartmentBranch,

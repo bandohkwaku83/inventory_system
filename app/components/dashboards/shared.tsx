@@ -90,16 +90,21 @@ export function DashboardHeader({
   greeting,
   subtitle,
   primaryAction,
+  actions,
 }: {
   dateLabel: string;
   greeting: string;
   subtitle?: string;
   primaryAction?: { label: string; href: string; icon: React.ElementType };
+  /** Extra controls on the right (e.g. location filter), shown before the primary action. */
+  actions?: React.ReactNode;
 }) {
   const PrimaryIcon = primaryAction?.icon;
+  const hasRight = Boolean(actions) || Boolean(primaryAction && PrimaryIcon);
+
   return (
-    <header className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0 flex-1">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
           {dateLabel}
         </p>
@@ -110,14 +115,19 @@ export function DashboardHeader({
           <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
         ) : null}
       </div>
-      {primaryAction && PrimaryIcon ? (
-        <Button
-          type="primary"
-          href={primaryAction.href}
-          icon={<PrimaryIcon className="!text-[1rem]" />}
-        >
-          {primaryAction.label}
-        </Button>
+      {hasRight ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2.5 sm:justify-end">
+          {actions}
+          {primaryAction && PrimaryIcon ? (
+            <Button
+              type="primary"
+              href={primaryAction.href}
+              icon={<PrimaryIcon className="!text-[1rem]" />}
+            >
+              {primaryAction.label}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </header>
   );

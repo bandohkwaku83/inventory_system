@@ -1,319 +1,364 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  Button,
   Card,
-  Typography,
+  Col,
+  Input,
+  Row,
+  Select,
+  Statistic,
   Table,
   Tag,
-  Button,
-  Input,
-  Select,
-  Row,
-  Col,
-  Statistic,
-  Modal,
-  Space,
+  Typography,
   message,
 } from 'antd';
 import type { TableProps } from 'antd';
-import {
-  SearchOutlined,
-  CheckOutlined,
-  CloseOutlined,
-  FilterOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import DashboardLayout from '../../components/DashboardLayout';
+import { BRAND } from '../../lib/brand';
 import {
-  APPROVAL_REQUESTS,
+  APPROVAL_STATUS_COLORS,
+  APPROVAL_STATUS_LABELS,
+  APPROVAL_TYPE_COLORS,
   APPROVAL_TYPE_LABELS,
-  locationName,
-  formatEnterpriseCurrency,
-  type ApprovalRequest,
+  fetchApprovals,
+  fetchApprovalsMeta,
+  fetchApprovalsSummary,
+  formatApprovalAmount,
+  formatApprovalDate,
+  formatApprovalPerson,
+  type Approval,
   type ApprovalStatus,
   type ApprovalType,
-} from '../../lib/enterpriseDummyData';
+  type ApprovalsMeta,
+  type ApprovalsSummary,
+} from '../../lib/approvalsApi';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
-const PRIORITY_COLORS = { high: 'red', medium: 'orange', low: 'default' } as const;
+const STATUS_TABS: Array<ApprovalStatus | 'all'> = [
+  'pending',
+  'all',
+  'approved',
+  'rejected',
+];
 
-export default function ApprovalsPage() {
-  const [requests, setRequests] = useState(APPROVAL_REQUESTS);
+function parseTypeParam(raw: string | null): ApprovalType | '' {
+  if (!raw) return '';
+  if (raw in APPROVAL_TYPE_LABELS) return raw as ApprovalType;
+  return '';
+}
+
+function parseStatusParam(raw: string | null): ApprovalStatus | 'all' {
+  if (!raw || raw === 'all') return raw === 'all' ? 'all' : 'pending';
+  if (raw === 'pending' || raw === 'approved' || raw === 'rejected') return raw;
+  return 'pending';
+}
+
+function ApprovalsInboxInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [items, setItems] = useState<Approval[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [meta, setMeta] = useState<ApprovalsMeta | null>(null);
+  const [summary, setSummary] = useState<ApprovalsSummary | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'all'>(() =>
+    parseStatusParam(searchParams.get('status'))
+  );
+  const [typeFilter, setTypeFilter] = useState<ApprovalType | ''>(() =>
+    parseTypeParam(searchParams.get('type'))
+  );
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'all'>('pending');
-  const [typeFilter, setTypeFilter] = useState<ApprovalType | 'all'>('all');
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [viewing, setViewing] = useState<ApprovalRequest | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 50;
+  const [urlHydrated, setUrlHydrated] = useState(false);
 
-  const filtered = useMemo(() => {
-    let list = requests;
-    if (statusFilter !== 'all') list = list.filter((r) => r.status === statusFilter);
-    if (typeFilter !== 'all') list = list.filter((r) => r.type === typeFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (r) =>
-          r.title.toLowerCase().includes(q) ||
-          r.description.toLowerCase().includes(q) ||
-          r.requestedBy.toLowerCase().includes(q)
-      );
+  useEffect(() => {
+    setTypeFilter(parseTypeParam(searchParams.get('type')));
+    const status = searchParams.get('status');
+    if (status) setStatusFilter(parseStatusParam(status));
+    setUrlHydrated(true);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!urlHydrated) return;
+    const params = new URLSearchParams();
+    if (typeFilter) params.set('type', typeFilter);
+    if (statusFilter && statusFilter !== 'pending') params.set('status', statusFilter);
+    const qs = params.toString();
+    const next = qs ? `/dashboard/approvals?${qs}` : '/dashboard/approvals';
+    router.replace(next, { scroll: false });
+  }, [typeFilter, statusFilter, router, urlHydrated]);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      setSummary(await fetchApprovalsSummary());
+    } catch {
+      setSummary(null);
     }
-    return list;
-  }, [requests, search, statusFilter, typeFilter]);
+  }, []);
 
-  const pendingCount = requests.filter((r) => r.status === 'pending').length;
-  const pendingValue = requests
-    .filter((r) => r.status === 'pending' && r.amount > 0)
-    .reduce((s, r) => s + r.amount, 0);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchApprovals({
+        page,
+        limit,
+        status: statusFilter === 'all' ? '' : statusFilter,
+        type: typeFilter || undefined,
+        q: search.trim() || undefined,
+      });
+      setItems(data.items);
+      setTotal(data.total);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Failed to load approvals');
+      setItems([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, statusFilter, typeFilter, search]);
 
-  const handleAction = (id: string, action: 'approved' | 'rejected') => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: action } : r))
-    );
-    message.success(`Request ${action}`);
-    setDetailOpen(false);
-  };
+  useEffect(() => {
+    void fetchApprovalsMeta()
+      .then(setMeta)
+      .catch(() => setMeta(null));
+    void loadSummary();
+  }, [loadSummary]);
 
-  const columns: TableProps<ApprovalRequest>['columns'] = [
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const typeOptions = (meta?.types ?? Object.keys(APPROVAL_TYPE_LABELS) as ApprovalType[]).map(
+    (t) => ({ value: t, label: APPROVAL_TYPE_LABELS[t] ?? t })
+  );
+
+  const summaryValue = (key: ApprovalStatus) =>
+    summary?.byStatus?.[key] ?? summary?.[key] ?? 0;
+
+  const columns: TableProps<Approval>['columns'] = [
     {
-      title: 'Request',
-      key: 'title',
-      render: (_, r) => (
-        <div>
-          <p className="text-sm font-semibold text-slate-800">{r.title}</p>
-          <p className="line-clamp-1 text-xs text-slate-500">{r.description}</p>
-        </div>
+      title: 'Number',
+      dataIndex: 'approvalNumber',
+      width: 110,
+      render: (v: string, r) => (
+        <button
+          type="button"
+          className="font-mono text-xs font-semibold hover:underline"
+          style={{ color: BRAND }}
+          onClick={() => router.push(`/dashboard/approvals/${r.id}`)}
+        >
+          {v || '—'}
+        </button>
       ),
     },
     {
       title: 'Type',
       dataIndex: 'type',
-      key: 'type',
-      width: 100,
-      render: (t: ApprovalType) => <Tag>{APPROVAL_TYPE_LABELS[t]}</Tag>,
+      width: 150,
+      render: (t: ApprovalType) => (
+        <Tag color={APPROVAL_TYPE_COLORS[t]}>{APPROVAL_TYPE_LABELS[t] ?? t}</Tag>
+      ),
+    },
+    {
+      title: 'Title',
+      key: 'title',
+      ellipsis: true,
+      render: (_, r) => (
+        <div>
+          <p className="mb-0 text-sm font-medium text-slate-800">{r.title || '—'}</p>
+          {r.description ? (
+            <p className="mb-0 line-clamp-1 text-xs text-slate-500">{r.description}</p>
+          ) : null}
+        </div>
+      ),
     },
     {
       title: 'Amount',
       dataIndex: 'amount',
-      key: 'amount',
-      align: 'right',
       width: 120,
-      render: (v: number) => (v > 0 ? formatEnterpriseCurrency(v) : '—'),
-    },
-    {
-      title: 'Priority',
-      dataIndex: 'priority',
-      key: 'priority',
-      width: 90,
-      render: (p: ApprovalRequest['priority']) => (
-        <Tag color={PRIORITY_COLORS[p]}>{p}</Tag>
-      ),
-    },
-    {
-      title: 'Location',
-      key: 'location',
-      width: 140,
-      render: (_, r) => (
-        <span className="text-xs text-slate-600">{locationName(r.locationId)}</span>
-      ),
+      align: 'right',
+      render: (v: number | null) => formatApprovalAmount(v),
     },
     {
       title: 'Requested by',
-      dataIndex: 'requestedBy',
       key: 'requestedBy',
-      width: 120,
+      width: 150,
+      render: (_, r) => formatApprovalPerson(r.requestedBy),
     },
     {
       title: 'Status',
       dataIndex: 'status',
-      key: 'status',
-      width: 100,
+      width: 110,
       render: (s: ApprovalStatus) => (
-        <Tag
-          color={s === 'pending' ? 'processing' : s === 'approved' ? 'success' : 'error'}
-        >
-          {s.charAt(0).toUpperCase() + s.slice(1)}
-        </Tag>
+        <Tag color={APPROVAL_STATUS_COLORS[s]}>{APPROVAL_STATUS_LABELS[s]}</Tag>
       ),
     },
     {
-      title: '',
-      key: 'actions',
+      title: 'Date',
+      dataIndex: 'createdAt',
       width: 160,
-      render: (_, r) =>
-        r.status === 'pending' ? (
-          <Space size="small">
-            <Button
-              type="primary"
-              size="small"
-              icon={<CheckOutlined />}
-              onClick={() => handleAction(r.id, 'approved')}
-            >
-              Approve
-            </Button>
-            <Button
-              size="small"
-              danger
-              icon={<CloseOutlined />}
-              onClick={() => handleAction(r.id, 'rejected')}
-            >
-              Reject
-            </Button>
-          </Space>
-        ) : (
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              setViewing(r);
-              setDetailOpen(true);
-            }}
-          >
-            Details
-          </Button>
-        ),
+      render: (v: string) => formatApprovalDate(v),
     },
   ];
 
   return (
-    <DashboardLayout>
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <Title level={4} className="!mb-1">
-              Approvals
-            </Title>
-            <Text type="secondary">
-              Review purchase orders, expenses, discounts, and credit requests
-            </Text>
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Title level={3} className="!mb-1">
+            Approvals
+          </Title>
+          <Text type="secondary">
+            Review requests from across the app — decide pending items here
+          </Text>
         </div>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={12} sm={8}>
-            <Card size="small" className="!rounded-xl border-amber-200 bg-amber-50/50">
-              <Statistic
-                title="Pending approvals"
-                value={pendingCount}
-                valueStyle={{ color: '#d97706' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={12} sm={8}>
-            <Card size="small" className="!rounded-xl">
-              <Statistic
-                title="Pending value"
-                value={pendingValue}
-                prefix="GHS"
-                precision={0}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Card size="small" className="!rounded-xl">
-              <Statistic
-                title="Approved today"
-                value={requests.filter((r) => r.status === 'approved').length}
-                valueStyle={{ color: '#059669' }}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        <Card className="!rounded-xl">
-          <div className="table-toolbar mb-4 flex flex-wrap items-center gap-3">
-            <Input
-              placeholder="Search requests…"
-              prefix={<SearchOutlined />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs"
-              allowClear
-            />
-            <Select
-              value={statusFilter}
-              onChange={setStatusFilter}
-              className="min-w-[130px]"
-              suffixIcon={<FilterOutlined />}
-              options={[
-                { value: 'all', label: 'All status' },
-                { value: 'pending', label: 'Pending' },
-                { value: 'approved', label: 'Approved' },
-                { value: 'rejected', label: 'Rejected' },
-              ]}
-            />
-            <Select
-              value={typeFilter}
-              onChange={setTypeFilter}
-              className="min-w-[130px]"
-              options={[
-                { value: 'all', label: 'All types' },
-                ...Object.entries(APPROVAL_TYPE_LABELS).map(([v, l]) => ({
-                  value: v,
-                  label: l,
-                })),
-              ]}
-            />
-          </div>
-          <Table<ApprovalRequest>
-            columns={columns}
-            dataSource={filtered}
-            rowKey="id"
-            pagination={{ pageSize: 10, showTotal: (t) => `${t} requests` }}
-            scroll={{ x: 960 }}
-          />
-        </Card>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => router.push('/dashboard/approvals/new')}
+        >
+          New request
+        </Button>
       </div>
 
-      <Modal
-        title="Approval details"
-        open={detailOpen}
-        onCancel={() => setDetailOpen(false)}
-        footer={
-          viewing?.status === 'pending' ? (
-            <Space>
-              <Button onClick={() => setDetailOpen(false)}>Close</Button>
-              <Button danger onClick={() => viewing && handleAction(viewing.id, 'rejected')}>
-                Reject
+      <Row gutter={[12, 12]}>
+        {(
+          [
+            { key: 'pending' as const, label: 'Pending', color: '#d97706', tint: true },
+            { key: 'approved' as const, label: 'Approved', color: '#059669', tint: false },
+            { key: 'rejected' as const, label: 'Rejected', color: '#dc2626', tint: false },
+          ] as const
+        ).map((card) => {
+          const active = statusFilter === card.key;
+          return (
+            <Col xs={8} key={card.key}>
+              <button
+                type="button"
+                className="w-full text-left"
+                onClick={() => {
+                  setStatusFilter(card.key);
+                  setPage(1);
+                }}
+              >
+                <Card
+                  size="small"
+                  className={`!rounded-xl transition-shadow ${
+                    card.tint ? '!border-amber-200 !bg-amber-50/50' : ''
+                  } ${active ? 'ring-2 ring-offset-1' : 'hover:shadow-sm'}`}
+                  style={active ? { ['--tw-ring-color' as string]: BRAND } : undefined}
+                >
+                  <Statistic
+                    title={card.label}
+                    value={summaryValue(card.key)}
+                    styles={{ content: { color: card.color, fontSize: 22 } }}
+                  />
+                </Card>
+              </button>
+            </Col>
+          );
+        })}
+      </Row>
+
+      <Card className="!rounded-xl">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {STATUS_TABS.map((s) => {
+            const active = statusFilter === s;
+            const label = s === 'all' ? 'All' : APPROVAL_STATUS_LABELS[s];
+            const count = s === 'all' ? summary?.total : summaryValue(s);
+            return (
+              <Button
+                key={s}
+                type={active ? 'primary' : 'default'}
+                size="small"
+                onClick={() => {
+                  setStatusFilter(s);
+                  setPage(1);
+                }}
+              >
+                {label}
+                {typeof count === 'number' ? ` (${count})` : ''}
               </Button>
-              <Button type="primary" onClick={() => viewing && handleAction(viewing.id, 'approved')}>
-                Approve
-              </Button>
-            </Space>
-          ) : (
-            <Button onClick={() => setDetailOpen(false)}>Close</Button>
-          )
-        }
-      >
-        {viewing && (
-          <div className="space-y-3 pt-2">
-            <div>
-              <Tag>{APPROVAL_TYPE_LABELS[viewing.type]}</Tag>
-              <Tag color={PRIORITY_COLORS[viewing.priority]}>{viewing.priority} priority</Tag>
-            </div>
-            <Title level={5} className="!mb-0">
-              {viewing.title}
-            </Title>
-            <Paragraph type="secondary">{viewing.description}</Paragraph>
-            {viewing.amount > 0 && (
-              <p className="text-lg font-bold text-slate-800">
-                {formatEnterpriseCurrency(viewing.amount)}
-              </p>
-            )}
-            <div className="text-xs text-slate-500">
-              <p>Requested by {viewing.requestedBy}</p>
-              <p>Location: {locationName(viewing.locationId)}</p>
-              <p>
-                {new Date(viewing.requestedAt).toLocaleString('en-US', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-              </p>
-            </div>
-          </div>
-        )}
-      </Modal>
+            );
+          })}
+        </div>
+
+        <div className="table-toolbar mb-4 flex flex-wrap items-center gap-3">
+          <Input
+            placeholder="Search number, title…"
+            prefix={<SearchOutlined />}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onPressEnter={() => {
+              setSearch(searchInput);
+              setPage(1);
+            }}
+            onBlur={() => {
+              if (searchInput !== search) {
+                setSearch(searchInput);
+                setPage(1);
+              }
+            }}
+            className="max-w-xs"
+            allowClear
+            onClear={() => {
+              setSearchInput('');
+              setSearch('');
+              setPage(1);
+            }}
+          />
+          <Select
+            allowClear
+            placeholder="All types"
+            value={typeFilter || undefined}
+            onChange={(v) => {
+              setTypeFilter((v as ApprovalType) || '');
+              setPage(1);
+            }}
+            className="min-w-[180px]"
+            options={typeOptions}
+          />
+        </div>
+
+        <Table<Approval>
+          columns={columns}
+          dataSource={items}
+          rowKey="id"
+          loading={loading}
+          onRow={(r) => ({
+            onClick: () => router.push(`/dashboard/approvals/${r.id}`),
+            className: `cursor-pointer ${
+              r.status === 'pending' ? 'border-l-[3px] border-l-amber-400' : ''
+            }`,
+          })}
+          pagination={{
+            current: page,
+            pageSize: limit,
+            total,
+            showSizeChanger: false,
+            showTotal: (t) => `${t} request${t === 1 ? '' : 's'}`,
+            onChange: (p) => setPage(p),
+          }}
+          scroll={{ x: 900 }}
+        />
+      </Card>
+    </div>
+  );
+}
+
+export default function ApprovalsInboxPage() {
+  return (
+    <DashboardLayout>
+      <React.Suspense fallback={<Card loading />}>
+        <ApprovalsInboxInner />
+      </React.Suspense>
     </DashboardLayout>
   );
 }

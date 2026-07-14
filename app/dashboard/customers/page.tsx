@@ -5,428 +5,570 @@ import {
   Card,
   Typography,
   Table,
-  Tag,
   Space,
   Button,
   Input,
-  Select,
   Modal,
   Form,
-  Row,
-  Col,
-  Statistic,
+  Tooltip,
   Drawer,
   Descriptions,
-  Progress,
+  Empty,
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
   SearchOutlined,
   PlusOutlined,
-  UserOutlined,
-  PhoneOutlined,
-  MailOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  EyeOutlined,
   DownloadOutlined,
+  PhoneOutlined,
+  EnvironmentOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import DashboardLayout from '../../components/DashboardLayout';
-import {
-  CUSTOMERS,
-  CUSTOMER_TYPE_LABELS,
-  locationName,
-  formatEnterpriseCurrency,
-  type Customer,
-  type CustomerType,
-  type CustomerStatus,
-} from '../../lib/enterpriseDummyData';
+import { useCustomers, type Customer } from '../../context/CustomersContext';
+import { formatEnterpriseCurrency } from '../../lib/enterpriseDummyData';
 
 const { Title, Text } = Typography;
 
-const STATUS_COLORS: Record<CustomerStatus, string> = {
-  active: 'success',
-  inactive: 'default',
-  on_hold: 'warning',
+type CustomerFormValues = {
+  name: string;
+  phone: string;
+  city?: string;
 };
 
+const formatDate = (iso?: string) => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+function StatCard({
+  label,
+  value,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  accent: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {label}
+          </p>
+          <p className="mt-1 text-xl font-bold text-slate-800">{value}</p>
+        </div>
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-sm"
+          style={{ backgroundColor: `${accent}14`, color: accent }}
+          aria-hidden
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState(CUSTOMERS);
+  const {
+    customers,
+    customersLoading,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+  } = useCustomers();
+
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<CustomerType | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<CustomerStatus | 'all'>('all');
+
   const [formOpen, setFormOpen] = useState(false);
+  const [mode, setMode] = useState<'add' | 'edit'>('add');
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form] = Form.useForm<CustomerFormValues>();
+
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [viewing, setViewing] = useState<Customer | null>(null);
-  const [form] = Form.useForm();
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    let list = customers;
-    if (typeFilter !== 'all') list = list.filter((c) => c.type === typeFilter);
-    if (statusFilter !== 'all') list = list.filter((c) => c.status === statusFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.email.toLowerCase().includes(q) ||
-          c.phone.includes(q) ||
-          c.city.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [customers, search, typeFilter, statusFilter]);
+    if (!search.trim()) return customers;
+    const q = search.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(q) ||
+        c.city.toLowerCase().includes(q)
+    );
+  }, [customers, search]);
 
   const totals = useMemo(
     () => ({
-      active: customers.filter((c) => c.status === 'active').length,
+      count: customers.length,
+      purchases: customers.reduce((s, c) => s + c.totalPurchases, 0),
       receivables: customers.reduce((s, c) => s + c.balance, 0),
-      creditUsed: customers.reduce(
-        (s, c) => s + (c.creditLimit > 0 ? c.balance / c.creditLimit : 0),
-        0
-      ),
-      onHold: customers.filter((c) => c.status === 'on_hold').length,
     }),
     [customers]
   );
+
+  const viewing = viewingId
+    ? customers.find((c) => c.id === viewingId) ?? null
+    : null;
+
+  const openAdd = () => {
+    setMode('add');
+    setEditing(null);
+    form.resetFields();
+    setFormOpen(true);
+  };
+
+  const openEdit = (row: Customer) => {
+    setMode('edit');
+    setEditing(row);
+    form.setFieldsValue({
+      name: row.name,
+      phone: row.phone,
+      city: row.city,
+    });
+    setFormOpen(true);
+  };
+
+  const openView = (row: Customer) => {
+    setViewingId(row.id);
+    setDrawerOpen(true);
+  };
+
+  const handleSave = () => {
+    void form.validateFields().then(async (values) => {
+      setSaving(true);
+      try {
+        const payload = {
+          name: values.name,
+          phone: values.phone,
+          city: values.city,
+        };
+        if (mode === 'edit' && editing) {
+          await updateCustomer(editing.id, payload);
+        } else {
+          await addCustomer(payload);
+        }
+        setFormOpen(false);
+        setEditing(null);
+        form.resetFields();
+      } catch {
+        /* message from context */
+      } finally {
+        setSaving(false);
+      }
+    });
+  };
+
+  const handleDelete = (row: Customer) => {
+    Modal.confirm({
+      title: 'Delete customer',
+      content: (
+        <div>
+          Are you sure you want to delete <strong>{row.name}</strong>? This
+          action cannot be undone.
+        </div>
+      ),
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: () => deleteCustomer(row.id),
+    });
+  };
+
+  const exportCsv = () => {
+    const header = [
+      'Name',
+      'City',
+      'Phone',
+      'Balance',
+      'Total Purchases',
+      'Last Purchase',
+    ];
+    const lines = filtered.map((c) =>
+      [
+        c.name,
+        c.city,
+        c.phone,
+        c.balance.toFixed(2),
+        c.totalPurchases.toFixed(2),
+        c.lastPurchaseDate,
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const csv = [header.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `customers-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const columns: TableProps<Customer>['columns'] = [
     {
       title: 'Customer',
       key: 'name',
+      width: 240,
+      sorter: (a, b) => a.name.localeCompare(b.name),
       render: (_, r) => (
-        <div>
-          <p className="text-sm font-semibold text-slate-800">{r.name}</p>
-          <p className="text-xs text-slate-500">{r.city}</p>
-        </div>
+        <Space align="center" size="middle">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#25395c]/10 text-[#25395c]"
+            aria-hidden
+          >
+            <UserOutlined className="text-xl" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-slate-800">
+              {r.name}
+            </div>
+            {r.city ? (
+              <div className="flex items-center gap-1 text-xs text-slate-500">
+                <EnvironmentOutlined />
+                {r.city}
+              </div>
+            ) : (
+              <Text type="secondary" className="text-xs">
+                No city
+              </Text>
+            )}
+          </div>
+        </Space>
       ),
-    },
-    {
-      title: 'Type',
-      dataIndex: 'type',
-      key: 'type',
-      render: (t: CustomerType) => <Tag>{CUSTOMER_TYPE_LABELS[t]}</Tag>,
     },
     {
       title: 'Contact',
       key: 'contact',
-      render: (_, r) => (
-        <div className="text-xs text-slate-600">
-          {r.phone && <div>{r.phone}</div>}
-          {r.email && <div className="text-slate-400">{r.email}</div>}
-        </div>
-      ),
+      width: 160,
+      render: (_, r) =>
+        r.phone ? (
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <PhoneOutlined className="text-slate-400" />
+            <span>{r.phone}</span>
+          </div>
+        ) : (
+          <Text type="secondary" className="text-xs">
+            —
+          </Text>
+        ),
     },
     {
       title: 'Balance',
       dataIndex: 'balance',
       key: 'balance',
+      width: 120,
       align: 'right',
-      render: (v: number, r) => (
+      sorter: (a, b) => a.balance - b.balance,
+      render: (v: number) => (
         <span className={v > 0 ? 'font-semibold text-amber-700' : 'text-slate-500'}>
           {formatEnterpriseCurrency(v)}
-          {r.creditLimit > 0 && (
-            <div className="text-[10px] font-normal text-slate-400">
-              of {formatEnterpriseCurrency(r.creditLimit)}
-            </div>
-          )}
         </span>
       ),
-      sorter: (a, b) => a.balance - b.balance,
     },
     {
-      title: 'Total purchases',
+      title: 'Purchases',
       dataIndex: 'totalPurchases',
       key: 'totalPurchases',
+      width: 120,
       align: 'right',
-      render: (v: number) => formatEnterpriseCurrency(v),
       sorter: (a, b) => a.totalPurchases - b.totalPurchases,
+      render: (v: number) => formatEnterpriseCurrency(v),
     },
     {
-      title: 'Rep',
-      dataIndex: 'assignedRep',
-      key: 'assignedRep',
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (s: CustomerStatus) => (
-        <Tag color={STATUS_COLORS[s]}>
-          {s === 'on_hold' ? 'On hold' : s.charAt(0).toUpperCase() + s.slice(1)}
-        </Tag>
+      title: 'Last purchased',
+      dataIndex: 'lastPurchaseDate',
+      key: 'lastPurchaseDate',
+      width: 140,
+      sorter: (a, b) => (a.lastPurchaseDate ?? '').localeCompare(b.lastPurchaseDate ?? ''),
+      render: (v?: string) => (
+        <Text type="secondary" className="text-xs">
+          {v ? formatDate(v) : '—'}
+        </Text>
       ),
     },
     {
-      title: '',
+      title: 'Actions',
       key: 'actions',
-      width: 72,
+      width: 140,
+      fixed: 'right' as const,
       render: (_, r) => (
-        <Button
-          type="link"
-          size="small"
-          onClick={() => {
-            setViewing(r);
-            setDrawerOpen(true);
-          }}
-        >
-          View
-        </Button>
+        <Space size="small">
+          <Tooltip title="View details">
+            <Button
+              type="text"
+              icon={<EyeOutlined />}
+              onClick={() => openView(r)}
+              className="text-slate-600 hover:!bg-[#25395c]/10 hover:!text-[#1a2842]"
+            />
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => openEdit(r)}
+              className="text-[#25395c] hover:!bg-[#25395c]/10 hover:!text-[#1a2842]"
+            />
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(r)}
+            />
+          </Tooltip>
+        </Space>
       ),
     },
   ];
 
-  const exportCsv = () => {
-    const header = 'Name,Type,City,Phone,Email,Balance,Credit Limit,Total Purchases,Status\n';
-    const rows = filtered
-      .map(
-        (c) =>
-          `"${c.name}",${c.type},${c.city},${c.phone},${c.email},${c.balance},${c.creditLimit},${c.totalPurchases},${c.status}`
-      )
-      .join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'customers.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <DashboardLayout>
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Title level={4} className="!mb-1">
+            <Title level={4} className="!mb-1 !font-bold !text-slate-800">
               Customers
             </Title>
             <Text type="secondary">
-              CRM — manage accounts, credit limits, and receivables
+              Directory for POS, receipts, and customer balances.
             </Text>
           </div>
-          <Space>
+          <Space wrap>
             <Button icon={<DownloadOutlined />} onClick={exportCsv}>
-              Export
+              Export CSV
             </Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => {
-                form.resetFields();
-                setFormOpen(true);
-              }}
+              onClick={openAdd}
+              className="!border-[#25395c] !bg-[#25395c] hover:!bg-[#1a2842]"
             >
               Add customer
             </Button>
           </Space>
         </div>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={12} sm={6}>
-            <Card size="small" className="!rounded-xl">
-              <Statistic title="Active accounts" value={totals.active} />
-            </Card>
-          </Col>
-          <Col xs={12} sm={6}>
-            <Card size="small" className="!rounded-xl">
-              <Statistic
-                title="Total receivables"
-                value={totals.receivables}
-                prefix="GHS"
-                precision={0}
-                valueStyle={{ color: '#d97706' }}
-              />
-            </Card>
-          </Col>
-          <Col xs={12} sm={6}>
-            <Card size="small" className="!rounded-xl">
-              <Statistic title="On credit hold" value={totals.onHold} />
-            </Card>
-          </Col>
-          <Col xs={12} sm={6}>
-            <Card size="small" className="!rounded-xl">
-              <Statistic title="Customers" value={customers.length} />
-            </Card>
-          </Col>
-        </Row>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatCard
+            label="Customers"
+            value={totals.count.toString()}
+            icon={<UserOutlined />}
+            accent="#1a2842"
+          />
+          <StatCard
+            label="Total purchases"
+            value={formatEnterpriseCurrency(totals.purchases)}
+            icon={<span className="font-semibold">GHS</span>}
+            accent="#25395c"
+          />
+          <StatCard
+            label="Receivables"
+            value={formatEnterpriseCurrency(totals.receivables)}
+            icon={<span className="font-semibold">GHS</span>}
+            accent="#d97706"
+          />
+        </div>
 
-        <Card className="!rounded-xl">
-          <div className="table-toolbar mb-4 flex flex-wrap items-center gap-3">
-            <Input
-              placeholder="Search customers…"
-              prefix={<SearchOutlined />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs"
-              allowClear
-            />
-            <Select
-              value={typeFilter}
-              onChange={setTypeFilter}
-              className="min-w-[140px]"
-              options={[
-                { value: 'all', label: 'All types' },
-                ...Object.entries(CUSTOMER_TYPE_LABELS).map(([v, l]) => ({
-                  value: v,
-                  label: l,
-                })),
-              ]}
-            />
-            <Select
-              value={statusFilter}
-              onChange={setStatusFilter}
-              className="min-w-[120px]"
-              options={[
-                { value: 'all', label: 'All status' },
-                { value: 'active', label: 'Active' },
-                { value: 'on_hold', label: 'On hold' },
-                { value: 'inactive', label: 'Inactive' },
-              ]}
-            />
+        <Card
+          className="shadow-sm"
+          loading={customersLoading}
+          styles={{ body: { padding: 0 } }}
+        >
+          <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
+            <div className="w-full min-w-0 sm:w-80 sm:min-w-[280px]">
+              <Input
+                placeholder="Search name, city or phone…"
+                prefix={<SearchOutlined className="text-slate-400" />}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                allowClear
+                size="large"
+                className="w-full"
+              />
+            </div>
+            <Text type="secondary" className="shrink-0 text-sm">
+              {filtered.length === customers.length
+                ? `${customers.length} customer${customers.length !== 1 ? 's' : ''}`
+                : `${filtered.length} of ${customers.length} customer${customers.length !== 1 ? 's' : ''}`}
+            </Text>
           </div>
+
           <Table<Customer>
+            rowKey="id"
             columns={columns}
             dataSource={filtered}
-            rowKey="id"
-            pagination={{ pageSize: 10, showTotal: (t) => `${t} customers` }}
+            size="middle"
+            className="[&_.ant-table]:!text-[14px]"
+            locale={{
+              emptyText: (
+                <Empty
+                  description="No customers match your search"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              ),
+            }}
+            pagination={{
+              showSizeChanger: true,
+              pageSizeOptions: ['10', '20', '50'],
+              defaultPageSize: 10,
+              showTotal: (total) => `Total ${total} customers`,
+            }}
             scroll={{ x: 900 }}
           />
         </Card>
       </div>
 
       <Modal
-        title="Add customer"
+        title={mode === 'edit' ? 'Edit customer' : 'Add customer'}
         open={formOpen}
-        onCancel={() => setFormOpen(false)}
-        onOk={() => {
-          form.validateFields().then((vals) => {
-            const newCust: Customer = {
-              id: `cust-${Date.now()}`,
-              name: vals.name,
-              type: vals.type,
-              status: 'active',
-              email: vals.email ?? '',
-              phone: vals.phone ?? '',
-              city: vals.city,
-              creditLimit: vals.creditLimit ?? 0,
-              balance: 0,
-              totalPurchases: 0,
-              lastPurchaseDate: new Date().toISOString().slice(0, 10),
-              assignedRep: '—',
-              locationId: 'loc-hq',
-              tags: [],
-            };
-            setCustomers((prev) => [...prev, newCust]);
-            setFormOpen(false);
-          });
+        onCancel={() => {
+          setFormOpen(false);
+          setEditing(null);
+          form.resetFields();
         }}
-        okText="Create customer"
+        onOk={handleSave}
+        confirmLoading={saving}
+        okText={mode === 'edit' ? 'Update' : 'Create'}
+        cancelText="Cancel"
+        width={520}
+        style={{ maxWidth: '95vw' }}
+        destroyOnHidden
+        okButtonProps={{
+          className: '!border-[#25395c] !bg-[#25395c] hover:!bg-[#1a2842]',
+        }}
       >
-        <Form form={form} layout="vertical" className="mt-4">
-          <Form.Item name="name" label="Company / name" rules={[{ required: true }]}>
-            <Input />
+        <Form<CustomerFormValues>
+          form={form}
+          layout="vertical"
+          className="mt-4"
+          requiredMark={false}
+        >
+          <Form.Item
+            name="name"
+            label="Company / name"
+            rules={[{ required: true, message: 'Enter company or name' }]}
+          >
+            <Input placeholder="e.g. Acme Ltd or Kojo Mensah" size="large" />
           </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="type" label="Type" rules={[{ required: true }]}>
-                <Select
-                  options={Object.entries(CUSTOMER_TYPE_LABELS).map(([v, l]) => ({
-                    value: v,
-                    label: l,
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="city" label="City" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="phone" label="Phone">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="email" label="Email">
-                <Input type="email" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="creditLimit" label="Credit limit (GHS)">
-            <Input type="number" min={0} />
-          </Form.Item>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Form.Item
+              name="phone"
+              label="Phone"
+              rules={[{ required: true, message: 'Enter phone number' }]}
+            >
+              <Input placeholder="e.g. 024 000 0000" size="large" />
+            </Form.Item>
+            <Form.Item name="city" label="City">
+              <Input placeholder="e.g. Accra, Kumasi, Tema" size="large" />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
 
       <Drawer
-        title={viewing?.name}
+        title={viewing?.name ?? 'Customer details'}
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={440}
+        onClose={() => {
+          setDrawerOpen(false);
+          setViewingId(null);
+        }}
+        size={440}
+        extra={
+          viewing ? (
+            <Button
+              size="small"
+              type="primary"
+              icon={<EditOutlined />}
+              className="!border-[#25395c] !bg-[#25395c] hover:!bg-[#1a2842]"
+              onClick={() => {
+                setDrawerOpen(false);
+                openEdit(viewing);
+              }}
+            >
+              Edit
+            </Button>
+          ) : null
+        }
       >
-        {viewing && (
-          <>
-            <div className="mb-4 flex flex-wrap gap-1.5">
-              {viewing.tags.map((t) => (
-                <Tag key={t} color="blue">
-                  {t}
-                </Tag>
-              ))}
+        {viewing ? (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#25395c]/10 text-[#25395c]"
+                aria-hidden
+              >
+                <UserOutlined className="text-2xl" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-base font-semibold text-slate-800">
+                  {viewing.name}
+                </div>
+                <div className="font-mono text-xs text-slate-500">{viewing.id}</div>
+              </div>
             </div>
-            <Descriptions column={1} size="small" bordered>
-              <Descriptions.Item label="Type">
-                {CUSTOMER_TYPE_LABELS[viewing.type]}
-              </Descriptions.Item>
-              <Descriptions.Item label="Status">
-                <Tag color={STATUS_COLORS[viewing.status]}>{viewing.status}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Location">
-                {locationName(viewing.locationId)}
+
+            <Descriptions column={1} size="small" labelStyle={{ color: '#64748b' }}>
+              <Descriptions.Item label="City">
+                {viewing.city || '—'}
               </Descriptions.Item>
               <Descriptions.Item label="Phone">
-                <PhoneOutlined className="mr-1" />
-                {viewing.phone || '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Email">
-                <MailOutlined className="mr-1" />
-                {viewing.email || '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="TIN">{viewing.tin || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Assigned rep">
-                <UserOutlined className="mr-1" />
-                {viewing.assignedRep}
+                {viewing.phone ? (
+                  <span>
+                    <PhoneOutlined className="mr-1" />
+                    {viewing.phone}
+                  </span>
+                ) : (
+                  '—'
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Balance">
                 {formatEnterpriseCurrency(viewing.balance)}
               </Descriptions.Item>
-              <Descriptions.Item label="Credit limit">
-                {formatEnterpriseCurrency(viewing.creditLimit)}
-              </Descriptions.Item>
               <Descriptions.Item label="Total purchases">
                 {formatEnterpriseCurrency(viewing.totalPurchases)}
               </Descriptions.Item>
-              <Descriptions.Item label="Last purchase">
-                {viewing.lastPurchaseDate}
+              <Descriptions.Item label="Last purchased">
+                {viewing.lastPurchaseDate
+                  ? formatDate(viewing.lastPurchaseDate)
+                  : '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Created">
+                {formatDate(viewing.createdAt)}
               </Descriptions.Item>
             </Descriptions>
-            {viewing.creditLimit > 0 && (
-              <div className="mt-4">
-                <Text type="secondary" className="text-xs">
-                  Credit utilization
-                </Text>
-                <Progress
-                  percent={Math.round((viewing.balance / viewing.creditLimit) * 100)}
-                  status={
-                    viewing.balance / viewing.creditLimit > 0.9 ? 'exception' : 'active'
-                  }
-                  size="small"
-                  className="mt-1"
-                />
-              </div>
-            )}
-          </>
-        )}
+
+            <Button
+              danger
+              block
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(viewing)}
+            >
+              Delete customer
+            </Button>
+          </div>
+        ) : null}
       </Drawer>
     </DashboardLayout>
   );

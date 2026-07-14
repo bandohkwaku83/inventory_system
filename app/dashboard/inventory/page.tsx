@@ -36,12 +36,19 @@ import { useSettings, findCategoryByName } from '../../context/SettingsContext';
 import { parseProductSpreadsheet, downloadProductTemplate } from '../../lib/spreadsheetImport';
 
 const { Title, Text } = Typography;
-const { TextArea } = Input;
 
 export default function InventoryPage() {
   const { runWithLoader } = useActionLoader();
-  const { products, productsLoading, addProduct, updateProduct, deleteProduct, units, categoryOptions } =
-    useProducts();
+  const {
+    products,
+    productsLoading,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    units,
+    categories,
+    categoryOptions,
+  } = useProducts();
   const { addCategory } = useSettings();
   const [open, setOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Product | null>(null);
@@ -102,7 +109,6 @@ export default function InventoryPage() {
               price: row.price,
               costPrice: row.costPrice,
               sku: row.sku,
-              description: row.description,
               image: null,
             });
           } catch {
@@ -129,7 +135,6 @@ export default function InventoryPage() {
       form.setFieldsValue({
         name: item.name,
         categoryId: item.categoryId,
-        description: item.description ?? '',
         price: item.price,
         costPrice: item.costPrice ?? undefined,
         sku: item.sku || '',
@@ -169,7 +174,6 @@ export default function InventoryPage() {
       const basePayload = {
         name: values.name as string,
         categoryId: values.categoryId as string,
-        description: (values.description as string) ?? '',
         price: Number(values.price ?? 0),
         costPrice,
         unit: values.unit as string,
@@ -255,7 +259,7 @@ export default function InventoryPage() {
       ),
     },
     {
-      title: 'Reorder at',
+      title: 'Minimum stock',
       dataIndex: 'reorderLevel',
       key: 'reorderLevel',
       width: 110,
@@ -426,19 +430,16 @@ export default function InventoryPage() {
               options={categoryOptions.map((c) => ({ label: c.name, value: c.id }))}
             />
           </Form.Item>
-          <Form.Item name="description" label="Description">
-            <TextArea rows={3} placeholder="Optional product description" />
-          </Form.Item>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item
               name="price"
               label="Selling price (GHS)"
               rules={[{ required: true, message: 'Required' }]}
             >
-              <InputNumber min={0} step={0.01} className="w-full" size="large" addonBefore="GHS" />
+              <InputNumber min={0} step={0.01} className="w-full" size="large" prefix="GHS" />
             </Form.Item>
             <Form.Item name="costPrice" label="Cost price (GHS)">
-              <InputNumber min={0} step={0.01} className="w-full" size="large" addonBefore="GHS" />
+              <InputNumber min={0} step={0.01} className="w-full" size="large" prefix="GHS" />
             </Form.Item>
           </div>
           <Form.Item name="unit" label="Unit" rules={[{ required: true, message: 'Select unit' }]}>
@@ -458,13 +459,13 @@ export default function InventoryPage() {
             </Form.Item>
             <Form.Item
               name="reorderLevel"
-              label="Reorder at (alert when below)"
+              label="Minimum stock"
               rules={[{ required: true, message: 'Required' }]}
             >
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
           </div>
-          <Form.Item name="sku" label="SKU / Barcode (optional)">
+          <Form.Item name="sku" label="SKU (optional)">
             <Input placeholder="e.g. LED-009" size="large" />
           </Form.Item>
         </Form>
@@ -481,14 +482,19 @@ export default function InventoryPage() {
       >
         <div className="py-2">
           <Text type="secondary" className="block mb-4">
-            Upload an Excel (.xlsx) or CSV file. Required columns:{' '}
-            <strong>name, category, unit, quantity, reorderLevel, price, costPrice</strong>. Optional:{' '}
-            <strong>sku, description</strong>. New categories are created automatically.
+            Upload an Excel (.xlsx) or CSV file. Columns:{' '}
+            <strong>
+              SKU/Serial number, Name, Category, unit, quantity, reorder, cost price, selling price
+            </strong>
+            . The Excel template includes dropdowns for category and unit from your system. New
+            categories are created automatically if typed in.
           </Text>
           <Button
             icon={<DownloadOutlined />}
             className="mb-4"
-            onClick={downloadProductTemplate}
+            onClick={() => {
+              void downloadProductTemplate({ categories, units });
+            }}
           >
             Download Excel template
           </Button>

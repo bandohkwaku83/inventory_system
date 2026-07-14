@@ -80,7 +80,7 @@ export default function PriceListPage() {
               className="h-full w-full object-contain p-1"
             />
           </div>
-          <Space direction="vertical" size={0} className="min-w-0">
+          <Space orientation="vertical" size={0} className="min-w-0">
             <Text strong className="block truncate">
               {r.name}
             </Text>

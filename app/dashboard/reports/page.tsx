@@ -124,7 +124,7 @@ function buildBuckets(
 }
 
 export default function ReportsPage() {
-  const { sales } = useSales();
+  const { completedSales } = useSales();
 
   const [period, setPeriod] = useState<Period>('day');
   const [anchor, setAnchor] = useState<Dayjs>(dayjs());
@@ -134,7 +134,7 @@ export default function ReportsPage() {
 
   const periodSales = useMemo(
     () =>
-      sales
+      completedSales
         .filter((s) => {
           const d = dayjs(s.timestamp);
           return !d.isBefore(start) && !d.isAfter(end);
@@ -142,7 +142,7 @@ export default function ReportsPage() {
         .sort(
           (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf()
         ),
-    [sales, start, end]
+    [completedSales, start, end]
   );
 
   const cashSales = useMemo(

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Input,
   type InputRef,
@@ -8,6 +8,9 @@ import {
   InputNumber,
   Modal,
   message,
+  Space,
+  Select,
+  Form,
 } from 'antd';
 import {
   PlusOutlined,
@@ -23,12 +26,16 @@ import {
   ScanOutlined,
   BarcodeOutlined,
 } from '@ant-design/icons';
+import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '../../components/DashboardLayout';
 import ReceiptDocument from '../../components/ReceiptDocument';
 import { useProducts, type Product } from '../../context/ProductsContext';
-import { useSales } from '../../context/SalesContext';
+import { useSales, type Sale } from '../../context/SalesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useCustomers } from '../../context/CustomersContext';
+
+const WALK_IN_VALUE = '__walk_in__';
 
 type PaymentMethod = 'Cash' | 'Mobile Money';
 
@@ -70,19 +77,29 @@ const findProduct = (products: Product[], query: string): Product | undefined =>
   );
 };
 
-export default function SalesPage() {
-  const { visibleProducts, deductQuantities } = useProducts();
-  const { addSale } = useSales();
+function SalesPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { visibleProducts, refreshProducts } = useProducts();
+  const { sales, salesLoading, addSale, updateSale } = useSales();
+  const { customers, addCustomer, refreshCustomers } = useCustomers();
   const { user } = useAuth();
   const { posPreferences } = useSettings();
   const products = visibleProducts;
   const scanRef = useRef<InputRef>(null);
+  const [completing, setCompleting] = useState(false);
+  const [savingPending, setSavingPending] = useState(false);
 
   const [scan, setScan] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
+  /** When set, settle/save updates this pending sale instead of creating a new one. */
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+  const editHydratedRef = useRef<string | null>(null);
 
-  const [customerName, setCustomerName] = useState('');
+  const [customerId, setCustomerId] = useState<string>(WALK_IN_VALUE);
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
+  const [customerForm] = Form.useForm();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
     () => posPreferences.defaultPaymentMethod
   );
@@ -138,6 +155,72 @@ export default function SalesPage() {
     const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  const loadSaleIntoCart = useCallback(
+    (sale: Sale) => {
+      const lines: CartLine[] = sale.items.map((item) => {
+        const product = products.find((p) => p.id === item.id);
+        return {
+          id: item.id,
+          name: item.name,
+          sku: item.sku ?? product?.sku,
+          price: item.price,
+          quantity: item.quantity,
+          // Allow at least the parked qty even if live stock is lower (e.g. reserved).
+          stock: Math.max(product?.quantity ?? 0, item.quantity),
+        };
+      });
+      setCart(lines);
+      setLastAddedId(null);
+      if (sale.customerId) {
+        setCustomerId(sale.customerId);
+      } else {
+        const match = customers.find(
+          (c) => c.name.toLowerCase() === sale.customer.toLowerCase()
+        );
+        setCustomerId(match?.id ?? WALK_IN_VALUE);
+      }
+      setPaymentMethod(sale.paymentMethod);
+      if (sale.discount > 0) {
+        setDiscountEnabled(true);
+        setDiscount(sale.discount);
+      } else {
+        setDiscountEnabled(false);
+        setDiscount(0);
+      }
+      setCashTendered(0);
+      setPaymentOpen(false);
+      setEditingSaleId(sale.id);
+      messageApi.info(`Editing pending sale ${sale.id} — add or change items, then settle`);
+      focusScanner();
+    },
+    [customers, focusScanner, messageApi, products]
+  );
+
+  // Resume a pending sale from Receipts (?edit=receiptId)
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId || salesLoading) return;
+    if (editHydratedRef.current === editId) return;
+
+    const sale = sales.find((s) => s.id === editId || s.apiId === editId);
+    if (!sale) {
+      editHydratedRef.current = editId;
+      messageApi.error('Pending sale not found');
+      router.replace('/dashboard/sales');
+      return;
+    }
+    if (sale.status !== 'pending') {
+      editHydratedRef.current = editId;
+      messageApi.warning('Only pending sales can be edited on the register');
+      router.replace('/dashboard/sales');
+      return;
+    }
+
+    editHydratedRef.current = editId;
+    loadSaleIntoCart(sale);
+    router.replace('/dashboard/sales');
+  }, [loadSaleIntoCart, messageApi, router, sales, salesLoading, searchParams]);
 
   const addProductToCart = useCallback(
     (product: Product, qty = 1) => {
@@ -226,11 +309,32 @@ export default function SalesPage() {
     setDiscount(0);
     setDiscountEnabled(false);
     setCashTendered(0);
-    setCustomerName('');
+    setCustomerId(WALK_IN_VALUE);
     setLastAddedId(null);
     setPaymentOpen(false);
+    setEditingSaleId(null);
+    editHydratedRef.current = null;
     focusScanner();
   };
+
+  const customerName = useMemo(() => {
+    if (customerId === WALK_IN_VALUE) return '';
+    return customers.find((c) => c.id === customerId)?.name ?? '';
+  }, [customerId, customers]);
+
+  const customerOptions = useMemo(
+    () => [
+      {
+        value: WALK_IN_VALUE,
+        label: 'Walk-in customer',
+      },
+      ...customers.map((c) => ({
+        value: c.id,
+        label: c.city ? `${c.name} · ${c.city}` : c.name,
+      })),
+    ],
+    [customers]
+  );
 
   const subtotal = cart.reduce((s, l) => s + l.price * l.quantity, 0);
   const appliedDiscount = discountEnabled ? Math.min(discount || 0, subtotal) : 0;
@@ -254,7 +358,8 @@ export default function SalesPage() {
   const canCompleteSale =
     cart.length > 0 &&
     (paymentMethod !== 'Cash' || change >= 0) &&
-    (!posPreferences.requireCustomerName || customerName.trim().length > 0);
+    (!posPreferences.requireCustomerName ||
+      (customerId !== WALK_IN_VALUE && customerName.trim().length > 0));
 
   const openPayment = useCallback(() => {
     if (cart.length === 0) {
@@ -276,57 +381,123 @@ export default function SalesPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [openPayment]);
 
-  const completeSale = async () => {
-    if (!canCompleteSale) return;
-    if (posPreferences.requireCustomerName && !customerName.trim()) {
-      messageApi.warning('Enter a customer name to complete this sale');
-      return;
-    }
+  const handleCreateCustomer = async () => {
     try {
-      await deductQuantities(cart.map((l) => ({ id: l.id, quantity: l.quantity })));
-    } catch {
+      const vals = await customerForm.validateFields();
+      const created = await addCustomer({
+        name: vals.name,
+        phone: vals.phone,
+        location: vals.location,
+      });
+      setCustomerId(created.id);
+      setAddCustomerOpen(false);
+      customerForm.resetFields();
+      messageApi.success(`Added ${created.name}`);
+    } catch (e) {
+      if (e && typeof e === 'object' && 'errorFields' in e) return;
+      messageApi.error(e instanceof Error ? e.message : 'Could not add customer');
+    }
+  };
+
+  const salePayloadBase = useCallback(
+    () => ({
+      customer: customerName || 'Walk-in',
+      customerId: customerId === WALK_IN_VALUE ? null : customerId,
+      paymentMethod,
+      discount: appliedDiscount,
+      items: cart.map((l) => ({
+        productId: l.id,
+        quantity: l.quantity,
+        price: l.price,
+      })),
+    }),
+    [appliedDiscount, cart, customerId, customerName, paymentMethod]
+  );
+
+  /** Leaving settle without completing always parks the cart as pending. */
+  const skipAutoPendingRef = useRef(false);
+
+  const leaveSettleAsPending = async () => {
+    if (completing || savingPending) return;
+    if (cart.length === 0) {
+      setPaymentOpen(false);
+      focusScanner();
       return;
     }
-    const now = new Date();
-    const record = {
-      id: `R-${now.getTime().toString(36).toUpperCase()}`,
-      timestamp: now.toISOString(),
-      date: now.toISOString().slice(0, 10),
-      time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-      customer: customerName || 'Walk-in',
-      servedBy: user?.id,
-      servedByName: user?.name,
-      paymentMethod,
-      discount: appliedDiscount,
-      subtotal,
-      total,
-      cashTendered: paymentMethod === 'Cash' ? cashTendered : undefined,
-      change: paymentMethod === 'Cash' ? change : undefined,
-      items: cart.map((l) => ({
-        id: l.id,
-        name: l.name,
-        sku: l.sku,
-        price: l.price,
-        quantity: l.quantity,
-      })),
-    };
-    addSale(record);
-    setReceiptData({
-      id: record.id,
-      date: record.date,
-      time: record.time,
-      customer: customerName,
-      servedByName: user?.name,
-      paymentMethod,
-      discount: appliedDiscount,
-      subtotal,
-      total,
-      cashTendered: record.cashTendered,
-      change: record.change,
-      items: [...cart],
-    });
-    setPaymentOpen(false);
-    setReceiptOpen(true);
+    setSavingPending(true);
+    try {
+      if (editingSaleId) {
+        await updateSale(editingSaleId, {
+          ...salePayloadBase(),
+          status: 'pending',
+        });
+        messageApi.success('Pending sale updated');
+      } else {
+        await addSale({ ...salePayloadBase(), status: 'pending' });
+        messageApi.success('Sale kept as pending — edit or complete it from Receipts');
+      }
+      setPaymentOpen(false);
+      clearCart();
+    } catch (e) {
+      messageApi.error(e instanceof Error ? e.message : 'Could not save pending sale');
+    } finally {
+      setSavingPending(false);
+    }
+  };
+
+  const completeSale = async () => {
+    if (!canCompleteSale || completing) return;
+    if (
+      posPreferences.requireCustomerName &&
+      (customerId === WALK_IN_VALUE || !customerName.trim())
+    ) {
+      messageApi.warning('Select a customer to complete this sale');
+      return;
+    }
+    setCompleting(true);
+    try {
+      const payload = {
+        ...salePayloadBase(),
+        cashTendered: paymentMethod === 'Cash' ? cashTendered : undefined,
+        status: 'completed' as const,
+      };
+      const record = editingSaleId
+        ? await updateSale(editingSaleId, payload)
+        : await addSale(payload);
+      try {
+        await refreshProducts();
+      } catch {
+        /* stock already updated server-side */
+      }
+      try {
+        await refreshCustomers();
+      } catch {
+        /* totals update is best-effort */
+      }
+      setReceiptData({
+        id: record.id,
+        date: record.date,
+        time: record.time,
+        customer: customerName || 'Walk-in',
+        servedByName: record.servedByName || user?.name,
+        paymentMethod,
+        discount: appliedDiscount,
+        subtotal,
+        total,
+        cashTendered: record.cashTendered,
+        change: record.change,
+        items: [...cart],
+      });
+      skipAutoPendingRef.current = true;
+      setEditingSaleId(null);
+      editHydratedRef.current = null;
+      setPaymentOpen(false);
+      setReceiptOpen(true);
+    } catch (e) {
+      messageApi.error(e instanceof Error ? e.message : 'Could not complete sale');
+    } finally {
+      setCompleting(false);
+    }
   };
 
   const closeReceipt = () => {
@@ -375,6 +546,25 @@ export default function SalesPage() {
             onClick={clearCart}
           />
         </div>
+
+        {editingSaleId ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+            <span>
+              Editing pending sale{' '}
+              <span className="font-mono font-semibold">{editingSaleId}</span> — scan or find items
+              to add, then settle when ready.
+            </span>
+            <Button
+              size="small"
+              onClick={() => {
+                clearCart();
+                messageApi.info('Edit cancelled');
+              }}
+            >
+              Cancel edit
+            </Button>
+          </div>
+        ) : null}
 
         {user?.role === 'cashier' && user.categoryIds.length > 0 && (
           <div className="border-b border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800">
@@ -498,15 +688,17 @@ export default function SalesPage() {
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Sale discount
             </span>
-            <InputNumber
-              min={0}
-              max={subtotal}
-              step={0.5}
-              value={discount}
-              onChange={(v) => setDiscount(typeof v === 'number' ? v : 0)}
-              addonBefore="GHS"
-              className="!w-40"
-            />
+            <Space.Compact className="!w-40">
+              <Space.Addon>GHS</Space.Addon>
+              <InputNumber
+                min={0}
+                max={subtotal}
+                step={0.5}
+                value={discount}
+                onChange={(v) => setDiscount(typeof v === 'number' ? v : 0)}
+                className="w-full"
+              />
+            </Space.Compact>
             <span className="text-sm text-slate-500">
               Max {currency(subtotal)}
             </span>
@@ -572,12 +764,18 @@ export default function SalesPage() {
         title={null}
         open={paymentOpen}
         onCancel={() => {
-          setPaymentOpen(false);
-          focusScanner();
+          if (skipAutoPendingRef.current) {
+            skipAutoPendingRef.current = false;
+            focusScanner();
+            return;
+          }
+          void leaveSettleAsPending();
         }}
         footer={null}
         width={480}
         destroyOnHidden
+        maskClosable={!completing && !savingPending}
+        closable={!completing && !savingPending}
         className="pos-payment-modal"
         styles={{ body: { padding: 0 } }}
       >
@@ -598,13 +796,28 @@ export default function SalesPage() {
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Customer
               </label>
-              <Input
-                prefix={<UserOutlined className="text-slate-400" />}
-                placeholder="Walk-in customer"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                size="large"
-              />
+              <div className="flex gap-2">
+                <Select
+                  showSearch
+                  size="large"
+                  className="min-w-0 flex-1"
+                  value={customerId}
+                  onChange={setCustomerId}
+                  optionFilterProp="label"
+                  prefix={<UserOutlined className="text-slate-400" />}
+                  options={customerOptions}
+                  placeholder="Select customer"
+                />
+                <Button
+                  size="large"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    customerForm.resetFields();
+                    setAddCustomerOpen(true);
+                  }}
+                  title="Add customer"
+                />
+              </div>
             </div>
 
             <div>
@@ -660,15 +873,17 @@ export default function SalesPage() {
                     <label className="mb-1 block text-[10px] font-medium text-slate-400">
                       Received
                     </label>
-                    <InputNumber
-                      min={0}
-                      step={1}
-                      value={cashTendered}
-                      onChange={(v) => setCashTendered(typeof v === 'number' ? v : 0)}
-                      className="w-full"
-                      size="large"
-                      addonBefore="GHS"
-                    />
+                    <Space.Compact block>
+                      <Space.Addon>GHS</Space.Addon>
+                      <InputNumber
+                        min={0}
+                        step={1}
+                        value={cashTendered}
+                        onChange={(v) => setCashTendered(typeof v === 'number' ? v : 0)}
+                        className="w-full"
+                        size="large"
+                      />
+                    </Space.Compact>
                   </div>
                   <div>
                     <label className="mb-1 block text-[10px] font-medium text-slate-400">
@@ -688,29 +903,68 @@ export default function SalesPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <Button
-                size="large"
-                onClick={() => {
-                  setPaymentOpen(false);
-                  focusScanner();
-                }}
-              >
-                Back
-              </Button>
-              <Button
-                type="primary"
-                size="large"
-                icon={<PrinterOutlined />}
-                disabled={!canCompleteSale}
-                onClick={completeSale}
-                className="!bg-[#25395c] !font-bold hover:!bg-[#1a2842] disabled:!opacity-50"
-              >
-                Complete &amp; print
-              </Button>
+            <div className="space-y-2 pt-1">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="large"
+                  disabled={completing || savingPending}
+                  loading={savingPending}
+                  onClick={() => void leaveSettleAsPending()}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<PrinterOutlined />}
+                  disabled={!canCompleteSale || completing || savingPending}
+                  loading={completing}
+                  onClick={() => void completeSale()}
+                  className="!bg-[#25395c] !font-bold hover:!bg-[#1a2842] disabled:!opacity-50"
+                >
+                  Complete &amp; print
+                </Button>
+              </div>
+              <p className="text-center text-[11px] text-slate-400">
+                {editingSaleId
+                  ? 'Closing without completing saves changes as pending on Receipts.'
+                  : 'Closing without completing keeps this sale as pending on Receipts.'}
+              </p>
             </div>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        title="Add customer"
+        open={addCustomerOpen}
+        onCancel={() => {
+          setAddCustomerOpen(false);
+          customerForm.resetFields();
+        }}
+        onOk={() => void handleCreateCustomer()}
+        okText="Add customer"
+        destroyOnHidden
+      >
+        <Form form={customerForm} layout="vertical" className="mt-4">
+          <Form.Item
+            name="name"
+            label="Company / name"
+            rules={[{ required: true, message: 'Enter company or name' }]}
+          >
+            <Input placeholder="e.g. Acme Ltd or John Doe" />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="Phone"
+            rules={[{ required: true, message: 'Enter phone number' }]}
+          >
+            <Input placeholder="e.g. 024 000 0000" />
+          </Form.Item>
+          <Form.Item name="location" label="Location">
+            <Input placeholder="Optional — city or area" />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* Find item (PLU lookup) */}
@@ -882,6 +1136,22 @@ export default function SalesPage() {
         )}
       </Modal>
     </DashboardLayout>
+  );
+}
+
+export default function SalesPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">
+            Loading register…
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <SalesPageInner />
+    </Suspense>
   );
 }
 

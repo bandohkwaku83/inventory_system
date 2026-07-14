@@ -139,7 +139,7 @@ const ALL_QUICK_ACTIONS: QuickAction[] = [
   { key: 'expense', label: 'Record Expense', icon: AttachMoneyIcon, href: '/dashboard/expenses' },
   { key: 'restock', label: 'Restock', icon: LocalShippingIcon, href: '/dashboard/purchases' },
   { key: 'report', label: 'Sales Report', icon: AssessmentIcon, href: '/dashboard/reports' },
-  { key: 'transfer', label: 'Stock Transfer', icon: LocalShippingIcon, href: '/dashboard/stock' },
+  { key: 'transfer', label: 'Stock Transfer', icon: LocalShippingIcon, href: '/dashboard/warehouse-transfers' },
   { key: 'warehouses', label: 'Warehouses', icon: LocationOnIcon, href: '/dashboard/warehouses' },
   { key: 'approvals', label: 'Approvals', icon: FactCheckIcon, href: '/dashboard/approvals' },
 ];
@@ -271,21 +271,21 @@ export default function AdminDashboard({
   return (
     <div className="dashboard-stagger space-y-5 sm:space-y-6">
       {error ? <DashboardError message={error} /> : null}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <DashboardHeader
-          dateLabel={dateLabel}
-          greeting={greeting}
-          subtitle="Operations command center"
-          primaryAction={
-            canAccess('/dashboard/sales')
-              ? { label: 'Open POS', href: '/dashboard/sales', icon: PointOfSaleIcon }
-              : undefined
-          }
-        />
-        {canAccess('/dashboard/warehouses') && (
-          <LocationSelector value={locationId} onChange={setLocationId} size="small" />
-        )}
-      </div>
+      <DashboardHeader
+        dateLabel={dateLabel}
+        greeting={greeting}
+        subtitle="Operations command center"
+        actions={
+          canAccess('/dashboard/warehouses') ? (
+            <LocationSelector value={locationId} onChange={setLocationId} size="middle" />
+          ) : undefined
+        }
+        primaryAction={
+          canAccess('/dashboard/sales')
+            ? { label: 'Open POS', href: '/dashboard/sales', icon: PointOfSaleIcon }
+            : undefined
+        }
+      />
       {stats.length > 0 ? <StatCardsGrid stats={stats} /> : null}
       <QuickActionsSection actions={quickActions} />
       {(canAccess('/dashboard/reports') || canAccess('/dashboard/charts')) && (

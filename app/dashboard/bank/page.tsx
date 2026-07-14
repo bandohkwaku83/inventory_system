@@ -190,7 +190,7 @@ export default function BankPage() {
                     value={acct.balance}
                     precision={2}
                     prefix="GHS"
-                    valueStyle={{ fontSize: 22, fontWeight: 700, color: '#25395c' }}
+                    styles={{ content: { fontSize: 22, fontWeight: 700, color: '#25395c' } }}
                   />
                 </Card>
               </Col>
@@ -210,7 +210,7 @@ export default function BankPage() {
                 value={periodSummary.inflow}
                 precision={2}
                 prefix="GHS"
-                valueStyle={{ color: '#25395c' }}
+                styles={{ content: { color: '#25395c' } }}
               />
             </Card>
           </Col>
@@ -221,7 +221,7 @@ export default function BankPage() {
                 value={periodSummary.outflow}
                 precision={2}
                 prefix="GHS"
-                valueStyle={{ color: '#e11d48' }}
+                styles={{ content: { color: '#e11d48' } }}
               />
             </Card>
           </Col>

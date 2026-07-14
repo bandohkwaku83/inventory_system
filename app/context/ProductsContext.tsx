@@ -33,6 +33,8 @@ export interface Product {
   reorderLevel: number;
   lastRestocked: string;
   sku?: string;
+  barcode?: string;
+  maxStock?: number | null;
   description?: string;
   image?: string | null;
 }
@@ -45,9 +47,11 @@ export type ProductInput = {
   costPrice: number | null;
   /** Omit on create when empty; use `null` on update to clear. */
   sku?: string | null;
+  barcode?: string | null;
   unit: string;
   quantity: number;
   reorderLevel: number;
+  maxStock?: number | null;
   image?: string | null;
 };
 
@@ -167,6 +171,8 @@ export function ProductsProvider({
         formData.append('stockQuantity', String(input.quantity));
         formData.append('reorderAt', String(input.reorderLevel));
         if (input.sku?.trim()) formData.append('sku', input.sku.trim());
+        if (input.barcode?.trim()) formData.append('barcode', input.barcode.trim());
+        if (input.maxStock != null) formData.append('maxStock', String(input.maxStock));
         if (input.description?.trim()) formData.append('description', input.description.trim());
         if (input.costPrice != null) formData.append('costPrice', String(input.costPrice));
         if (input.image?.startsWith('data:')) {
@@ -199,6 +205,11 @@ export function ProductsProvider({
           const s = updates.sku;
           patch.sku = s == null || String(s).trim() === '' ? null : String(s).trim();
         }
+        if (updates.barcode !== undefined) {
+          const b = updates.barcode;
+          patch.barcode = b == null || String(b).trim() === '' ? null : String(b).trim();
+        }
+        if (updates.maxStock !== undefined) patch.maxStock = updates.maxStock;
         if (updates.description !== undefined) patch.description = updates.description;
         if (updates.categoryId !== undefined) patch.categoryId = updates.categoryId;
         const res = await fetch(productResourceUrl(id), {

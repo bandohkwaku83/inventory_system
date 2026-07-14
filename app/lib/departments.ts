@@ -1,5 +1,5 @@
 export interface Department {
-  /** Stable slug stored on staff records */
+  /** MongoDB _id (department or nested division) */
   id: string;
   name: string;
   description?: string;
@@ -9,17 +9,7 @@ export interface Department {
 
 export type DepartmentTreeNode = Department & { children: Department[] };
 
-export const DEFAULT_DEPARTMENTS: Department[] = [
-  { id: 'technical', name: 'Technical', parentId: null },
-  { id: 'frontend', name: 'Frontend', parentId: 'technical' },
-  { id: 'backend', name: 'Backend', parentId: 'technical' },
-  { id: 'media', name: 'Media', parentId: null },
-  { id: 'sound', name: 'Sound', parentId: 'media' },
-  { id: 'photography', name: 'Photography', parentId: 'media' },
-  { id: 'control_room', name: 'Control Room', parentId: 'media' },
-  { id: 'sales', name: 'Sales', parentId: null },
-  { id: 'finance', name: 'Finance', parentId: null },
-];
+export const DEFAULT_DEPARTMENTS: Department[] = [];
 
 export function normalizeDepartments(departments: Department[]): Department[] {
   return departments.map((dept) => ({
@@ -33,6 +23,15 @@ export function findDepartment(
   id: string
 ): Department | undefined {
   return departments.find((d) => d.id === id);
+}
+
+export function findDepartmentByName(
+  departments: Department[],
+  name: string
+): Department | undefined {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return undefined;
+  return departments.find((d) => d.name.toLowerCase() === needle);
 }
 
 /** Top-level departments (no parent). */
@@ -67,10 +66,12 @@ export function buildDepartmentTree(departments: Department[]): DepartmentTreeNo
 
 export function departmentPath(
   departments: Department[],
-  id: string
+  idOrName?: string
 ): Department[] {
+  if (!idOrName) return [];
+  let current =
+    findDepartment(departments, idOrName) ?? findDepartmentByName(departments, idOrName);
   const path: Department[] = [];
-  let current = findDepartment(departments, id);
   const seen = new Set<string>();
   while (current && !seen.has(current.id)) {
     seen.add(current.id);
@@ -82,18 +83,26 @@ export function departmentPath(
   return path;
 }
 
+/**
+ * Display label for a staff assignment.
+ * Staff stores department/division **names**; older records may still use ids.
+ */
 export function departmentDisplayName(
   departments: Department[],
-  id?: string
+  idOrName?: string
 ): string {
-  if (!id) return '';
-  const path = departmentPath(departments, id);
+  if (!idOrName) return '';
+  const path = departmentPath(departments, idOrName);
   if (path.length === 0) {
-    return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return idOrName.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
   return path.map((d) => d.name).join(' · ');
 }
 
+/**
+ * Staff select options — values are **names** (what the staff API stores).
+ * Prefer division name when the department has divisions; otherwise department name.
+ */
 export function departmentSelectGroups(
   departments: Department[]
 ): { label: string; options: { value: string; label: string }[] }[] {
@@ -101,13 +110,13 @@ export function departmentSelectGroups(
     if (dept.children.length === 0) {
       return {
         label: dept.name,
-        options: [{ value: dept.id, label: dept.name }],
+        options: [{ value: dept.name, label: dept.name }],
       };
     }
     return {
       label: dept.name,
       options: dept.children.map((division) => ({
-        value: division.id,
+        value: division.name,
         label: division.name,
       })),
     };
@@ -130,6 +139,19 @@ export function collectDescendantIds(
     }
   }
   return ids;
+}
+
+/** Names of a department and all its divisions (for staff assignment warnings). */
+export function collectDescendantNames(
+  departments: Department[],
+  rootId: string
+): Set<string> {
+  const names = new Set<string>();
+  for (const id of collectDescendantIds(departments, rootId)) {
+    const dept = findDepartment(departments, id);
+    if (dept?.name) names.add(dept.name);
+  }
+  return names;
 }
 
 export function slugifyDepartment(name: string): string {

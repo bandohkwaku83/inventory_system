@@ -80,7 +80,7 @@ export default function ImageUpload({ value, onChange, disabled }: ImageUploadPr
           )}
         </>
       ) : (
-        <Space direction="vertical" align="center" size={0}>
+        <Space orientation="vertical" align="center" size={0}>
           <PictureOutlined className="text-2xl" />
           <Text type="secondary">Click to upload (optional, max {MAX_SIZE_MB}MB)</Text>
         </Space>

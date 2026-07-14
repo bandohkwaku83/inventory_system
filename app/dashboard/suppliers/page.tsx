@@ -645,7 +645,7 @@ export default function SuppliersPage() {
           setDrawerOpen(false);
           setViewingId(null);
         }}
-        width={440}
+        size={440}
         extra={
           viewing ? (
             <Space>

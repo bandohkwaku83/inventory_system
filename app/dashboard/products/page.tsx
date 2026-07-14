@@ -27,7 +27,6 @@ import { useProducts, type Product } from '../../context/ProductsContext';
 import { productImageSrc } from '../../lib/productsApi';
 
 const { Title, Text } = Typography;
-const { TextArea } = Input;
 
 export default function ProductsPage() {
   const { products, productsLoading, addProduct, updateProduct, deleteProduct, units, categoryOptions } =
@@ -62,13 +61,14 @@ export default function ProductsPage() {
     form.setFieldsValue({
       name: product.name,
       categoryId: product.categoryId,
-      description: product.description ?? '',
       price: product.price,
       costPrice: product.costPrice ?? undefined,
       sku: product.sku || '',
+      barcode: product.barcode || '',
       unit: product.unit,
       quantity: product.quantity,
       reorderLevel: product.reorderLevel,
+      maxStock: product.maxStock ?? undefined,
       image: product.image ?? null,
     });
     setOpen(true);
@@ -106,16 +106,25 @@ export default function ProductsPage() {
           : Number(costRaw);
       const trimmedSku =
         values.sku == null || values.sku === '' ? '' : String(values.sku).trim();
+      const trimmedBarcode =
+        values.barcode == null || values.barcode === ''
+          ? ''
+          : String(values.barcode).trim();
+      const maxStockRaw = values.maxStock;
+      const maxStock =
+        maxStockRaw === null || maxStockRaw === undefined || maxStockRaw === ''
+          ? null
+          : Number(maxStockRaw);
 
       const basePayload = {
         name: values.name as string,
         categoryId: values.categoryId as string,
-        description: (values.description as string) ?? '',
         price: Number(values.price ?? 0),
         costPrice,
         unit: values.unit as string,
         quantity,
         reorderLevel,
+        maxStock,
         image: values.image ?? null,
       };
 
@@ -123,14 +132,25 @@ export default function ProductsPage() {
         if (mode === 'edit') {
           const prevSku = editingProduct!.sku?.trim() ?? '';
           const skuChanged = trimmedSku !== prevSku;
+          const prevBarcode = editingProduct!.barcode?.trim() ?? '';
+          const barcodeChanged = trimmedBarcode !== prevBarcode;
+          const prevMax =
+            editingProduct!.maxStock === undefined ? null : editingProduct!.maxStock;
+          const maxChanged = maxStock !== prevMax;
           await updateProduct(editingProduct!.id, {
             ...basePayload,
             ...(skuChanged ? { sku: trimmedSku === '' ? null : trimmedSku } : {}),
+            ...(barcodeChanged
+              ? { barcode: trimmedBarcode === '' ? null : trimmedBarcode }
+              : {}),
+            ...(maxChanged ? { maxStock } : {}),
           });
         } else {
           await addProduct({
             ...basePayload,
             sku: trimmedSku === '' ? undefined : trimmedSku,
+            barcode: trimmedBarcode === '' ? undefined : trimmedBarcode,
+            maxStock: maxStock ?? undefined,
           });
         }
         handleClose();
@@ -386,10 +406,6 @@ export default function ProductsPage() {
             />
           </Form.Item>
 
-          <Form.Item name="description" label="Description">
-            <TextArea rows={3} placeholder="Optional product description" />
-          </Form.Item>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Form.Item
               name="price"
@@ -401,7 +417,7 @@ export default function ProductsPage() {
                 step={0.01}
                 className="w-full"
                 size="large"
-                addonBefore="GHS"
+                prefix="GHS"
               />
             </Form.Item>
             <Form.Item
@@ -413,7 +429,7 @@ export default function ProductsPage() {
                 step={0.01}
                 className="w-full"
                 size="large"
-                addonBefore="GHS"
+                prefix="GHS"
               />
             </Form.Item>
           </div>
@@ -430,14 +446,28 @@ export default function ProductsPage() {
             <Form.Item name="quantity" label="Stock quantity" rules={[{ required: true, message: 'Required' }]}>
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
-            <Form.Item name="reorderLevel" label="Reorder at (alert when below)" rules={[{ required: true, message: 'Required' }]}>
+            <Form.Item
+              name="reorderLevel"
+              label="Minimum stock"
+              rules={[{ required: true, message: 'Required' }]}
+              extra="Alert when quantity falls to or below this"
+            >
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
           </div>
 
-          <Form.Item name="sku" label="SKU / Barcode (optional)">
-            <Input placeholder="e.g. MLK-001" size="large" />
+          <Form.Item name="maxStock" label="Maximum stock">
+            <InputNumber min={0} className="w-full" size="large" placeholder="Optional" />
           </Form.Item>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Form.Item name="sku" label="SKU">
+              <Input placeholder="e.g. MLK-001" size="large" />
+            </Form.Item>
+            <Form.Item name="barcode" label="Barcode">
+              <Input placeholder="Optional barcode" size="large" />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
     </DashboardLayout>

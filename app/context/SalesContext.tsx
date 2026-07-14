@@ -2,14 +2,26 @@
 
 import React, {
   createContext,
-  useContext,
-  useState,
-  useEffect,
   useCallback,
+  useContext,
+  useEffect,
   useMemo,
+  useState,
 } from 'react';
+import { message } from 'antd';
+import { useActionLoader } from '../components/LoaderProvider';
+import {
+  createSale as createSaleApi,
+  fetchSales,
+  updateSale as updateSaleApi,
+  type CreateSalePayload,
+  type MappedSale,
+  type SaleStatus,
+  type UpdateSalePayload,
+} from '../lib/salesApi';
 
 export type SalePaymentMethod = 'Cash' | 'Mobile Money';
+export type { SaleStatus };
 
 export interface SaleItem {
   id: string;
@@ -21,10 +33,13 @@ export interface SaleItem {
 
 export interface Sale {
   id: string;
+  /** Backend document id when available (for PATCH). */
+  apiId?: string;
   timestamp: string;
   date: string;
   time: string;
   customer: string;
+  customerId?: string;
   servedBy?: string;
   servedByName?: string;
   paymentMethod: SalePaymentMethod;
@@ -34,138 +49,200 @@ export interface Sale {
   cashTendered?: number;
   change?: number;
   items: SaleItem[];
-}
-
-const STORAGE_KEY = 'inventory_system_sales';
-
-function seedSales(): Sale[] {
-  const now = new Date();
-  const mk = (
-    daysAgo: number,
-    hour: number,
-    minute: number,
-    method: SalePaymentMethod,
-    customer: string,
-    items: SaleItem[]
-  ): Sale => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - daysAgo);
-    d.setHours(hour, minute, 0, 0);
-    const subtotal = items.reduce((s, it) => s + it.price * it.quantity, 0);
-    return {
-      id: `R-${d.getTime().toString(36).toUpperCase()}`,
-      timestamp: d.toISOString(),
-      date: d.toISOString().slice(0, 10),
-      time: d.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      customer,
-      paymentMethod: method,
-      subtotal,
-      discount: 0,
-      total: subtotal,
-      cashTendered: method === 'Cash' ? Math.ceil(subtotal / 10) * 10 : undefined,
-      change:
-        method === 'Cash'
-          ? Math.ceil(subtotal / 10) * 10 - subtotal
-          : undefined,
-      items,
-    };
-  };
-
-  return [
-    mk(0, 9, 14, 'Cash', 'Walk-in', [
-      { id: '1', name: 'Milk 1L', sku: 'MLK-001', price: 7, quantity: 2 },
-      { id: '2', name: 'Bread (Loaf)', sku: 'BRD-002', price: 5, quantity: 1 },
-    ]),
-    mk(0, 11, 42, 'Mobile Money', 'Ama K.', [
-      { id: '3', name: 'Rice 2kg', sku: 'RCE-003', price: 15, quantity: 1 },
-      { id: '4', name: 'Cooking Oil 1L', sku: 'OIL-004', price: 14, quantity: 1 },
-    ]),
-    mk(1, 8, 30, 'Cash', 'Walk-in', [
-      { id: '7', name: 'Eggs (Tray)', price: 18, quantity: 1 },
-    ]),
-    mk(1, 16, 5, 'Mobile Money', 'Kojo B.', [
-      { id: '1', name: 'Milk 1L', sku: 'MLK-001', price: 7, quantity: 3 },
-      { id: '6', name: 'Snacks (Pack)', price: 3.5, quantity: 4 },
-    ]),
-    mk(2, 10, 12, 'Cash', 'Walk-in', [
-      { id: '8', name: 'Tomatoes 1kg', price: 8, quantity: 2 },
-    ]),
-    mk(3, 13, 48, 'Cash', 'Walk-in', [
-      { id: '2', name: 'Bread (Loaf)', sku: 'BRD-002', price: 5, quantity: 2 },
-    ]),
-    mk(4, 9, 22, 'Mobile Money', 'Yaa S.', [
-      { id: '3', name: 'Rice 2kg', sku: 'RCE-003', price: 15, quantity: 2 },
-    ]),
-    mk(5, 15, 30, 'Cash', 'Walk-in', [
-      { id: '4', name: 'Cooking Oil 1L', sku: 'OIL-004', price: 14, quantity: 1 },
-      { id: '1', name: 'Milk 1L', sku: 'MLK-001', price: 7, quantity: 1 },
-    ]),
-    mk(8, 11, 0, 'Cash', 'Walk-in', [
-      { id: '7', name: 'Eggs (Tray)', price: 18, quantity: 2 },
-    ]),
-    mk(12, 17, 0, 'Mobile Money', 'Kwesi O.', [
-      { id: '3', name: 'Rice 2kg', sku: 'RCE-003', price: 15, quantity: 3 },
-    ]),
-  ];
-}
-
-function loadSales(): Sale[] {
-  if (typeof window === 'undefined') return seedSales();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedSales();
-    const parsed = JSON.parse(raw) as Sale[];
-    return Array.isArray(parsed) ? parsed : seedSales();
-  } catch {
-    return seedSales();
-  }
-}
-
-function saveSales(sales: Sale[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sales));
-  } catch (_) {}
+  status: SaleStatus;
 }
 
 export interface SalesContextValue {
   sales: Sale[];
-  addSale: (sale: Omit<Sale, 'timestamp'> & { timestamp?: string }) => void;
+  pendingSales: Sale[];
+  completedSales: Sale[];
+  salesLoading: boolean;
+  refreshSales: () => Promise<void>;
+  /** Persist a POS sale (default status: completed). */
+  addSale: (payload: CreateSalePayload) => Promise<Sale>;
+  /** Update an existing sale (parked cart edits, complete pending). */
+  updateSale: (id: string, payload: UpdateSalePayload) => Promise<Sale>;
   deleteSale: (id: string) => void;
   clearSales: () => void;
 }
 
 const SalesContext = createContext<SalesContextValue | undefined>(undefined);
 
+function fromMapped(sale: MappedSale): Sale {
+  return {
+    id: sale.id,
+    apiId: sale.apiId,
+    timestamp: sale.timestamp,
+    date: sale.date,
+    time: sale.time,
+    customer: sale.customer,
+    customerId: sale.customerId,
+    servedBy: sale.servedBy,
+    servedByName: sale.servedByName,
+    paymentMethod: sale.paymentMethod,
+    subtotal: sale.subtotal,
+    discount: sale.discount,
+    total: sale.total,
+    cashTendered: sale.cashTendered,
+    change: sale.change,
+    items: sale.items,
+    status: sale.status,
+  };
+}
+
+function resolveUpdateId(sale: Sale): string {
+  return sale.apiId || sale.id;
+}
+
 export function SalesProvider({ children }: { children: React.ReactNode }) {
-  const [sales, setSales] = useState<Sale[]>(() => {
-    if (typeof window === 'undefined') return [];
-    return loadSales();
-  });
+  const { runWithLoader } = useActionLoader();
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [salesLoading, setSalesLoading] = useState(true);
 
-  useEffect(() => {
-    saveSales(sales);
-  }, [sales]);
-
-  const addSale = useCallback<SalesContextValue['addSale']>((sale) => {
-    const timestamp = sale.timestamp ?? new Date().toISOString();
-    setSales((prev) => [{ ...sale, timestamp }, ...prev]);
+  const refreshSales = useCallback(async () => {
+    const list = await fetchSales();
+    setSales(list.map(fromMapped));
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      setSalesLoading(true);
+      try {
+        await refreshSales();
+      } catch (e) {
+        message.error(e instanceof Error ? e.message : 'Failed to load sales');
+      } finally {
+        setSalesLoading(false);
+      }
+    })();
+  }, [refreshSales]);
+
+  const addSale = useCallback(
+    async (payload: CreateSalePayload) => {
+      return runWithLoader(async () => {
+        const idempotencyKey =
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `sale-${Date.now()}`;
+        const sale = fromMapped(
+          await createSaleApi(
+            { ...payload, status: payload.status ?? 'completed' },
+            idempotencyKey
+          )
+        );
+        // If API ignored status, keep the requested status for pending parks.
+        if (payload.status && sale.status !== payload.status) {
+          sale.status = payload.status;
+        }
+        setSales((prev) => [sale, ...prev.filter((s) => s.id !== sale.id)]);
+        return sale;
+      });
+    },
+    [runWithLoader]
+  );
+
+  const updateSale = useCallback(
+    async (id: string, payload: UpdateSalePayload) => {
+      return runWithLoader(async () => {
+        const existing = sales.find((s) => s.id === id || s.apiId === id);
+        try {
+          const updated = fromMapped(
+            await updateSaleApi(existing ? resolveUpdateId(existing) : id, payload)
+          );
+          if (payload.status && updated.status !== payload.status) {
+            updated.status = payload.status;
+          }
+          setSales((prev) => {
+            const without = prev.filter(
+              (s) => s.id !== updated.id && s.apiId !== updated.apiId && s.id !== id
+            );
+            return [updated, ...without];
+          });
+          return updated;
+        } catch (e) {
+          // Frontend fallback when PATCH is unavailable: merge locally.
+          if (!existing) throw e;
+          const items =
+            payload.items?.map((item) => {
+              const prev = existing.items.find((i) => i.id === item.productId);
+              return {
+                id: item.productId,
+                name: prev?.name ?? 'Item',
+                sku: prev?.sku,
+                price: item.price ?? prev?.price ?? 0,
+                quantity: item.quantity,
+              };
+            }) ?? existing.items;
+          const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+          const discount = payload.discount ?? existing.discount;
+          const total = Math.max(0, subtotal - discount);
+          const updated: Sale = {
+            ...existing,
+            customer: payload.customer ?? existing.customer,
+            customerId:
+              payload.customerId !== undefined
+                ? payload.customerId || undefined
+                : existing.customerId,
+            paymentMethod: payload.paymentMethod ?? existing.paymentMethod,
+            discount,
+            cashTendered: payload.cashTendered ?? existing.cashTendered,
+            change:
+              payload.cashTendered !== undefined
+                ? Math.max(0, payload.cashTendered - total)
+                : existing.change,
+            items,
+            subtotal,
+            total,
+            status: payload.status ?? existing.status,
+          };
+          setSales((prev) => [updated, ...prev.filter((s) => s.id !== existing.id)]);
+          return updated;
+        }
+      });
+    },
+    [runWithLoader, sales]
+  );
+
   const deleteSale = useCallback((id: string) => {
-    setSales((prev) => prev.filter((s) => s.id !== id));
+    setSales((prev) => prev.filter((s) => s.id !== id && s.apiId !== id));
   }, []);
 
   const clearSales = useCallback(() => {
     setSales([]);
   }, []);
 
+  const pendingSales = useMemo(
+    () => sales.filter((s) => s.status === 'pending'),
+    [sales]
+  );
+  const completedSales = useMemo(
+    () => sales.filter((s) => s.status === 'completed'),
+    [sales]
+  );
+
   const value = useMemo<SalesContextValue>(
-    () => ({ sales, addSale, deleteSale, clearSales }),
-    [sales, addSale, deleteSale, clearSales]
+    () => ({
+      sales,
+      pendingSales,
+      completedSales,
+      salesLoading,
+      refreshSales,
+      addSale,
+      updateSale,
+      deleteSale,
+      clearSales,
+    }),
+    [
+      sales,
+      pendingSales,
+      completedSales,
+      salesLoading,
+      refreshSales,
+      addSale,
+      updateSale,
+      deleteSale,
+      clearSales,
+    ]
   );
 
   return <SalesContext.Provider value={value}>{children}</SalesContext.Provider>;

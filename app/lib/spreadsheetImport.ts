@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import type ExcelJS from 'exceljs';
 
 export interface ProductImportRow {
   name: string;
@@ -9,18 +10,18 @@ export interface ProductImportRow {
   price: number;
   costPrice: number | null;
   sku?: string;
-  description?: string;
 }
 
-const REQUIRED_HEADERS = [
-  'name',
-  'category',
-  'unit',
-  'quantity',
-  'reorderlevel',
-  'price',
-  'costprice',
-] as const;
+const HEADER_ALIASES: Record<string, string[]> = {
+  name: ['name'],
+  category: ['category'],
+  unit: ['unit'],
+  quantity: ['quantity'],
+  reorderlevel: ['reorderlevel', 'reorder', 'minimumstock', 'minstock'],
+  price: ['price', 'sellingprice', 'selling'],
+  costprice: ['costprice', 'cost'],
+  sku: ['sku', 'sku/serialnumber', 'sku/serialno', 'serialnumber', 'serialno'],
+};
 
 function normKey(key: string): string {
   return key.trim().toLowerCase().replace(/\s+/g, '');
@@ -34,8 +35,18 @@ function normRow(r: Record<string, string>): Record<string, string> {
   return out;
 }
 
-function pick(row: Record<string, string>, key: string): string {
-  return row[normKey(key)] ?? '';
+function pick(row: Record<string, string>, canonical: string): string {
+  const aliases = HEADER_ALIASES[canonical] ?? [canonical];
+  for (const alias of aliases) {
+    const value = row[alias];
+    if (value != null && value !== '') return value;
+  }
+  return '';
+}
+
+function hasField(keys: string[], canonical: string): boolean {
+  const aliases = HEADER_ALIASES[canonical] ?? [canonical];
+  return aliases.some((alias) => keys.includes(alias));
 }
 
 function parseCSV(text: string): Record<string, string>[] {
@@ -79,15 +90,25 @@ function parseCSV(text: string): Record<string, string>[] {
   return rows;
 }
 
+const REQUIRED_FIELDS = [
+  'name',
+  'category',
+  'unit',
+  'quantity',
+  'reorderlevel',
+  'price',
+  'costprice',
+] as const;
+
 function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
   if (rows.length === 0) return [];
 
   const first = normRow(rows[0]);
   const keys = Object.keys(first);
-  const hasHeaders = REQUIRED_HEADERS.every((h) => keys.includes(h));
+  const hasHeaders = REQUIRED_FIELDS.every((field) => hasField(keys, field));
   if (!hasHeaders) {
     throw new Error(
-      'Spreadsheet must include headers: name, category, unit, quantity, reorderLevel, price, costPrice, sku (optional), description (optional)'
+      'Spreadsheet must include headers: SKU/Serial number, Name, Category, unit, quantity, reorder, cost price, selling price'
     );
   }
 
@@ -107,7 +128,6 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
       price: parseFloat(pick(r, 'price')) || 0,
       costPrice: costRaw ? parseFloat(costRaw) || 0 : null,
       sku: pick(r, 'sku') || undefined,
-      description: pick(r, 'description') || undefined,
     });
   }
   return out;
@@ -136,31 +156,125 @@ export async function parseProductSpreadsheet(file: File): Promise<ProductImport
   throw new Error('Unsupported file type. Upload .csv, .xlsx, or .xls');
 }
 
-export function downloadProductTemplate() {
+function escapeSheetName(name: string): string {
+  return name.replace(/'/g, "''");
+}
+
+function addListValidation(
+  sheet: ExcelJS.Worksheet,
+  column: string,
+  listSheetName: string,
+  listLength: number
+) {
+  if (listLength <= 0) return;
+  const lastRow = Math.max(listLength, 1);
+  // ExcelJS supports dataValidations at runtime; typings omit the property.
+  const validations = (
+    sheet as ExcelJS.Worksheet & {
+      dataValidations: {
+        add: (
+          range: string,
+          validation: {
+            type: 'list';
+            allowBlank?: boolean;
+            showErrorMessage?: boolean;
+            errorTitle?: string;
+            error?: string;
+            formulae: string[];
+          }
+        ) => void;
+      };
+    }
+  ).dataValidations;
+  validations.add(`${column}2:${column}1001`, {
+    type: 'list',
+    allowBlank: true,
+    showErrorMessage: true,
+    errorTitle: 'Invalid value',
+    error: 'Please select a value from the dropdown list.',
+    formulae: [`'${escapeSheetName(listSheetName)}'!$A$1:$A$${lastRow}`],
+  });
+}
+
+export async function downloadProductTemplate(options?: {
+  categories?: string[];
+  units?: string[];
+}) {
+  const ExcelJS = (await import('exceljs')).default;
+  const categories = (options?.categories ?? []).map((c) => c.trim()).filter(Boolean);
+  const units = (options?.units ?? []).map((u) => u.trim()).filter(Boolean);
+
+  const wb = new ExcelJS.Workbook();
+  const sheet = wb.addWorksheet('Products');
+
   const headers = [
-    'name',
-    'category',
+    'SKU/Serial number',
+    'Name',
+    'Category',
     'unit',
     'quantity',
-    'reorderLevel',
-    'price',
-    'costPrice',
-    'sku',
-    'description',
+    'reorder',
+    'cost price',
+    'selling price',
   ];
-  const sample = [
-    'LED Bulb 9W',
-    'Lighting',
-    'units',
-    '50',
-    '10',
-    '25.00',
-    '18.00',
+  sheet.addRow(headers);
+  sheet.getRow(1).font = { bold: true };
+
+  const sampleCategory = categories[0] ?? 'Lighting';
+  const sampleUnit = units[0] ?? 'units';
+  sheet.addRow([
     'LED-009',
-    'Warm white bulb',
+    'LED Bulb 9W',
+    sampleCategory,
+    sampleUnit,
+    50,
+    10,
+    18,
+    25,
+  ]);
+
+  // Display cost price / selling price with two decimals (e.g. 18.00)
+  sheet.getColumn(7).numFmt = '0.00';
+  sheet.getColumn(8).numFmt = '0.00';
+
+  sheet.columns = [
+    { key: 'sku', width: 18 },
+    { key: 'name', width: 22 },
+    { key: 'category', width: 18 },
+    { key: 'unit', width: 12 },
+    { key: 'quantity', width: 12 },
+    { key: 'reorder', width: 12 },
+    { key: 'costPrice', width: 12 },
+    { key: 'price', width: 14 },
   ];
-  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Products');
-  XLSX.writeFile(wb, 'product-import-template.xlsx');
+
+  // Category = column C, unit = column D
+  if (categories.length > 0) {
+    const catSheet = wb.addWorksheet('Categories');
+    categories.forEach((name, i) => {
+      catSheet.getCell(i + 1, 1).value = name;
+    });
+    catSheet.state = 'veryHidden';
+    addListValidation(sheet, 'C', 'Categories', categories.length);
+  }
+
+  if (units.length > 0) {
+    const unitSheet = wb.addWorksheet('Units');
+    units.forEach((name, i) => {
+      unitSheet.getCell(i + 1, 1).value = name;
+    });
+    unitSheet.state = 'veryHidden';
+    addListValidation(sheet, 'D', 'Units', units.length);
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'product-import-template.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
 }

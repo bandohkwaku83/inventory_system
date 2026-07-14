@@ -696,7 +696,7 @@ export default function PurchasesPage() {
                 }
                 className="w-full"
                 size="large"
-                addonBefore="GHS"
+                prefix="GHS"
               />
             </div>
           </div>
@@ -762,7 +762,7 @@ export default function PurchasesPage() {
                   }
                   className="w-full"
                   size="large"
-                  addonBefore="GHS"
+                  prefix="GHS"
                 />
               </div>
               <Button
@@ -880,7 +880,7 @@ export default function PurchasesPage() {
                 }
                 className="w-full"
                 size="large"
-                addonBefore="GHS"
+                prefix="GHS"
               />
             </div>
           </div>

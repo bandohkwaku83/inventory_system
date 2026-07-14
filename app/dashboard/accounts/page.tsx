@@ -139,7 +139,7 @@ export default function ChartOfAccountsPage() {
           </Col>
           <Col xs={12} sm={6}>
             <Card className="shadow-sm">
-              <Statistic title="Active" value={summary.active} valueStyle={{ color: '#25395c' }} />
+              <Statistic title="Active" value={summary.active} styles={{ content: { color: '#25395c' } }} />
             </Card>
           </Col>
           <Col xs={12} sm={6}>

@@ -12,6 +12,9 @@ import {
   Sell as SellIcon,
   SwapHoriz as SwapHorizIcon,
   LocationOn as LocationOnIcon,
+  MoveToInbox as MoveToInboxIcon,
+  Outbox as OutboxIcon,
+  Checklist as ChecklistIcon,
 } from '@mui/icons-material';
 import {
   formatChangePercent,
@@ -70,12 +73,45 @@ const recentRestocksColumns: TableProps<RecentRestock>['columns'] = [
 ];
 
 const INVENTORY_QUICK_ACTIONS: QuickAction[] = [
-  { key: 'inventory', label: 'Stock Levels', icon: InventoryIcon, href: '/dashboard/inventory' },
-  { key: 'products', label: 'Products', icon: StorefrontIcon, href: '/dashboard/products' },
-  { key: 'restock', label: 'New Purchase', icon: LocalShippingIcon, href: '/dashboard/purchases' },
-  { key: 'transfer', label: 'Stock Transfer', icon: SwapHorizIcon, href: '/dashboard/stock' },
+  {
+    key: 'goods-receipt',
+    label: 'Goods Receipt',
+    icon: MoveToInboxIcon,
+    href: '/dashboard/goods-receipts',
+  },
+  {
+    key: 'goods-issue',
+    label: 'Goods Issue',
+    icon: OutboxIcon,
+    href: '/dashboard/goods-issues',
+  },
+  {
+    key: 'transfer',
+    label: 'Stock Transfer',
+    icon: SwapHorizIcon,
+    href: '/dashboard/warehouse-transfers',
+  },
+  {
+    key: 'stock-count',
+    label: 'Stock Count',
+    icon: ChecklistIcon,
+    href: '/dashboard/stock-counts',
+  },
   { key: 'warehouses', label: 'Warehouses', icon: LocationOnIcon, href: '/dashboard/warehouses' },
-  { key: 'stock', label: 'Stock Management', icon: InventoryIcon, href: '/dashboard/stock' },
+  { key: 'inventory', label: 'Inventory', icon: InventoryIcon, href: '/dashboard/inventory' },
+  { key: 'products', label: 'Products', icon: StorefrontIcon, href: '/dashboard/products' },
+  {
+    key: 'purchases',
+    label: 'Purchases (finance)',
+    icon: LocalShippingIcon,
+    href: '/dashboard/purchases',
+  },
+  {
+    key: 'stock-movements',
+    label: 'Stock Movements',
+    icon: InventoryIcon,
+    href: '/dashboard/stock-movements',
+  },
   { key: 'suppliers', label: 'Suppliers', icon: LocalOfferIcon, href: '/dashboard/suppliers' },
   { key: 'price-list', label: 'Price List', icon: SellIcon, href: '/dashboard/price-list' },
 ];
