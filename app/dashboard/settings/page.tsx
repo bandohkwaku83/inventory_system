@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Business as BusinessIcon,
   Receipt as ReceiptIcon,
@@ -31,6 +31,7 @@ import {
   message,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, PictureOutlined, CloseOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -46,6 +47,7 @@ import { useProducts } from '../../context/ProductsContext';
 import { useStaff } from '../../context/StaffContext';
 import {
   canManageRoles,
+  isAdminRole,
   type Permission,
   type RoleDefinition,
 } from '../../lib/permissions';
@@ -404,6 +406,7 @@ function LogoUploader({
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const { products } = useProducts();
   const { staff } = useStaff();
   const {
@@ -434,6 +437,14 @@ export default function SettingsPage() {
     deleteRole,
   } = useSettings();
 
+  const isAdmin = Boolean(user && isAdminRole(user.role));
+
+  useEffect(() => {
+    if (user && !isAdminRole(user.role)) {
+      router.replace('/dashboard');
+    }
+  }, [user, router]);
+
   const [activeSection, setActiveSection] = useState<SettingsSection>('business');
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
@@ -448,6 +459,10 @@ export default function SettingsPage() {
   const [departmentForm] = Form.useForm();
 
   const canEditRoles = user ? canManageRoles(user.role, roles, user.entitlements) : false;
+
+  if (!isAdmin) {
+    return null;
+  }
 
   const departmentTree = buildDepartmentTree(departments);
   const topLevelDepartmentCount = departmentTree.length;

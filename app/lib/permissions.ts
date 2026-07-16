@@ -121,7 +121,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     label: 'System',
     permissions: [
       { key: 'sms', label: 'SMS', description: 'Send SMS messages and view delivery history' },
-      { key: 'settings', label: 'Settings', description: 'Configure business and system settings' },
+      {
+        key: 'settings',
+        label: 'Settings',
+        description: 'Configure business and system settings (Administrator only)',
+      },
       { key: 'manage_roles', label: 'Manage roles', description: 'Create and edit user roles and permissions' },
     ],
   },
@@ -352,20 +356,28 @@ export function normalizeSystemRoles(fetched: RoleDefinition[]): RoleDefinition[
 
     // Admin always gets every permission. Other system roles merge API + built-in defaults
     // so new frontend permissions appear before the API is updated.
-    const permissions =
+    // Settings stays admin-only even if the API grants it to another system role.
+    const merged =
       defaults.id === 'admin'
         ? [...ALL_PERMISSIONS]
-        : Array.from(new Set([...defaults.permissions, ...fromApi.permissions]));
+        : Array.from(new Set([...defaults.permissions, ...fromApi.permissions])).filter(
+            (p) => p !== 'settings'
+          );
 
     return {
       ...defaults,
       ...fromApi,
       id: defaults.id,
       isSystem: true,
-      permissions,
+      permissions: merged,
     };
   });
   return [...system, ...custom];
+}
+
+/** Built-in administrator role slug. Settings (and similar) are admin-only. */
+export function isAdminRole(roleId: string): boolean {
+  return roleId === 'admin';
 }
 
 export function findRole(roleId: string, roles: RoleDefinition[]): RoleDefinition | undefined {
@@ -389,6 +401,9 @@ export function roleHasPermission(
 export function canAccessPath(roleId: string, path: string, roles: RoleDefinition[]): boolean {
   const requirement = resolvePathRequirement(path);
   if (!requirement) return true;
+  if (requirementList(requirement).includes('settings')) {
+    return isAdminRole(roleId);
+  }
   return requirementList(requirement).some((p) => roleHasPermission(roleId, p, roles));
 }
 
@@ -406,6 +421,8 @@ export function hasAnyEntitlement(
 export function canAccessPathByEntitlements(entitlements: Permission[] | undefined, path: string): boolean {
   const requirement = resolvePathRequirement(path);
   if (!requirement) return true;
+  // Settings cannot be granted via entitlements alone — admin role is required.
+  if (requirementList(requirement).includes('settings')) return false;
   return hasAnyEntitlement(entitlements, requirementList(requirement));
 }
 
@@ -417,6 +434,10 @@ export function userCanAccessPath(
 ): boolean {
   const requirement = resolvePathRequirement(path);
   if (!requirement) return true;
+  // Settings is restricted to the admin role, regardless of entitlements.
+  if (requirementList(requirement).includes('settings')) {
+    return isAdminRole(roleId);
+  }
   const needed = requirementList(requirement);
   // Normalized roles include built-in defaults (new UI permissions before API sync)
   if (needed.some((p) => roleHasPermission(roleId, p, roles))) return true;
@@ -430,6 +451,7 @@ export function userHasPermission(
   permission: Permission,
   roles: RoleDefinition[]
 ): boolean {
+  if (permission === 'settings') return isAdminRole(roleId);
   if (roleHasPermission(roleId, permission, roles)) return true;
   if (entitlements?.length) return hasEntitlement(entitlements, permission);
   return false;
