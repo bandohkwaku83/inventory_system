@@ -116,6 +116,7 @@ const menuSections: MenuSection[] = [
       // { text: 'Payroll', icon: WorkIcon, path: '/dashboard/payroll' },
       { text: 'Staff Management', icon: EventAvailableIcon, path: '/dashboard/attendance' },
       { text: 'Users', icon: AdminPanelSettingsIcon, path: '/dashboard/users' },
+      { text: 'SMS', icon: SmsIcon, path: '/dashboard/sms' },
     ],
   },
   {
@@ -128,7 +129,6 @@ const menuSections: MenuSection[] = [
   {
     heading: 'System',
     items: [
-      { text: 'SMS', icon: SmsIcon, path: '/dashboard/sms' },
       { text: 'Settings', icon: SettingsIcon, path: '/dashboard/settings' },
     ],
   },
