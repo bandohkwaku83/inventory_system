@@ -107,6 +107,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'payroll', label: 'Payroll', description: 'Staff salary records and monthly registers' },
       { key: 'staff_attendance', label: 'Staff Management', description: 'Manage staff and track attendance' },
       { key: 'users', label: 'Users', description: 'Manage system users' },
+      { key: 'sms', label: 'SMS', description: 'Send and manage SMS messages' },
     ],
   },
   {
@@ -120,7 +121,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   {
     label: 'System',
     permissions: [
-      { key: 'sms', label: 'SMS', description: 'Send SMS messages and view delivery history' },
       {
         key: 'settings',
         label: 'Settings',
