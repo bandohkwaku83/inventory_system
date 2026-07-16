@@ -16,6 +16,8 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  /** Human-readable role name from the API (needed when slug is null for custom roles). */
+  roleName: string;
   entitlements: Permission[];
   categoryIds: string[];
 }
@@ -33,6 +35,7 @@ function mapAuthUser(apiUser: AuthUserResponse): User {
     name: apiUser.name,
     email: apiUser.email,
     role: apiUser.role?.slug ?? apiUser.roleId,
+    roleName: apiUser.role?.name?.trim() || '',
     entitlements: normalizeEntitlements(apiUser),
     categoryIds: Array.isArray(apiUser.categoryIds) ? apiUser.categoryIds : [],
   };

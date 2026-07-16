@@ -37,6 +37,7 @@ export interface SystemUser {
   email: string;
   role: UserRole;
   roleId: string;
+  roleName: string;
   staffId: string | null;
   categoryIds: string[];
   active: boolean;
@@ -151,8 +152,12 @@ export function useUsers() {
   return ctx;
 }
 
-export function roleLabel(role: UserRole, roles: RoleDefinition[] = DEFAULT_ROLES): string {
-  return roleDisplayName(role, roles);
+export function roleLabel(
+  role: UserRole,
+  roles: RoleDefinition[] = DEFAULT_ROLES,
+  roleName?: string | null
+): string {
+  return roleDisplayName(role, roles, roleName);
 }
 
 export function hasFullCatalogAccess(

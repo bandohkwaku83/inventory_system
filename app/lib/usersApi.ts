@@ -26,6 +26,7 @@ export interface SystemUserRow {
   email: string;
   role: string;
   roleId: string;
+  roleName: string;
   staffId: string | null;
   categoryIds: string[];
   active: boolean;
@@ -60,6 +61,7 @@ export function mapApiUser(u: ApiUser): SystemUserRow {
     email: u.email,
     role: u.role?.slug ?? u.roleId,
     roleId: u.roleId,
+    roleName: u.role?.name?.trim() || '',
     staffId: u.staffId ? String(u.staffId) : null,
     categoryIds: Array.isArray(u.categoryIds) ? u.categoryIds.map(String) : [],
     active: Boolean(u.active),

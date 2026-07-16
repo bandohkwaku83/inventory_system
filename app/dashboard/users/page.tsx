@@ -89,7 +89,7 @@ export default function SystemUsersPage() {
         title: 'Role',
         dataIndex: 'role',
         key: 'role',
-        render: (v: UserRole) => (
+        render: (v: UserRole, r: SystemUser) => (
           <Tag
             color={
               v === 'admin'
@@ -103,7 +103,7 @@ export default function SystemUsersPage() {
                       : 'cyan'
             }
           >
-            {roleLabel(v, roles)}
+            {roleLabel(v, roles, r.roleName)}
           </Tag>
         ),
       },

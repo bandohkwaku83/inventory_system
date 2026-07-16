@@ -432,7 +432,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               {user?.name ?? 'Account'}
             </p>
             <p className="truncate text-[11px] font-medium text-sky-100/75">
-              {roleLabel(user.role, roles)}
+              {roleLabel(user.role, roles, user.roleName)}
             </p>
           </div>
           <button
@@ -516,7 +516,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         className="mt-0.5 text-[11px] font-medium uppercase tracking-wide"
                         style={{ color: BRAND }}
                       >
-                        {roleLabel(user.role, roles)}
+                        {roleLabel(user.role, roles, user.roleName)}
                       </p>
                     </div>
                     <button

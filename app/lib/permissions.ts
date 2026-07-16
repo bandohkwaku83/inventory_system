@@ -381,11 +381,22 @@ export function isAdminRole(roleId: string): boolean {
 }
 
 export function findRole(roleId: string, roles: RoleDefinition[]): RoleDefinition | undefined {
-  return roles.find((r) => r.id === roleId);
+  return roles.find(
+    (r) => r.id === roleId || r.apiId === roleId || r.slug === roleId
+  );
 }
 
-export function roleDisplayName(roleId: string, roles: RoleDefinition[]): string {
-  return findRole(roleId, roles)?.name ?? roleId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+export function roleDisplayName(
+  roleId: string,
+  roles: RoleDefinition[],
+  fallbackName?: string | null
+): string {
+  const found = findRole(roleId, roles);
+  if (found?.name) return found.name;
+  if (fallbackName?.trim()) return fallbackName.trim();
+  // Avoid showing raw Mongo ObjectIds when the roles list isn't available.
+  if (/^[a-f0-9]{24}$/i.test(roleId)) return 'Custom role';
+  return roleId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function roleHasPermission(
