@@ -25,6 +25,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import ImageUpload from '../../components/ImageUpload';
 import { useProducts, type Product } from '../../context/ProductsContext';
 import { productImageSrc } from '../../lib/productsApi';
+import { normalizeSkuInput, skuFieldRules, SKU_MAX_LENGTH } from '../../lib/sku';
 
 const { Title, Text } = Typography;
 
@@ -37,6 +38,13 @@ export default function ProductsPage() {
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [form] = Form.useForm();
+
+  const isSkuTaken = (sku: string) =>
+    products.some(
+      (p) =>
+        p.sku?.trim().toLowerCase() === sku.toLowerCase() &&
+        p.id !== editingProduct?.id
+    );
 
   const filteredProducts = useMemo(() => {
     let list = products;
@@ -104,8 +112,7 @@ export default function ProductsPage() {
         costRaw === null || costRaw === undefined || costRaw === ''
           ? null
           : Number(costRaw);
-      const trimmedSku =
-        values.sku == null || values.sku === '' ? '' : String(values.sku).trim();
+      const trimmedSku = normalizeSkuInput(values.sku) ?? '';
       const trimmedBarcode =
         values.barcode == null || values.barcode === ''
           ? ''
@@ -461,8 +468,18 @@ export default function ProductsPage() {
           </Form.Item>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Form.Item name="sku" label="SKU">
-              <Input placeholder="e.g. MLK-001" size="large" />
+            <Form.Item
+              name="sku"
+              label="SKU"
+              rules={skuFieldRules({ isTaken: isSkuTaken })}
+              extra="Optional. Letters, numbers, spaces, and symbols allowed. Max 64 characters. Clear the field to remove."
+            >
+              <Input
+                placeholder="Any code up to 64 characters"
+                size="large"
+                maxLength={SKU_MAX_LENGTH}
+                showCount
+              />
             </Form.Item>
             <Form.Item name="barcode" label="Barcode">
               <Input placeholder="Optional barcode" size="large" />

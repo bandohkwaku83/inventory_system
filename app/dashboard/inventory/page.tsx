@@ -34,6 +34,7 @@ import { useProducts, getStockStatus, type Product } from '../../context/Product
 import { productImageSrc } from '../../lib/productsApi';
 import { useSettings, findCategoryByName } from '../../context/SettingsContext';
 import { parseProductSpreadsheet, downloadProductTemplate } from '../../lib/spreadsheetImport';
+import { normalizeSkuInput, skuFieldRules, SKU_MAX_LENGTH } from '../../lib/sku';
 
 const { Title, Text } = Typography;
 
@@ -57,6 +58,13 @@ export default function InventoryPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [form] = Form.useForm();
+
+  const isSkuTaken = (sku: string) =>
+    products.some(
+      (p) =>
+        p.sku?.trim().toLowerCase() === sku.toLowerCase() &&
+        p.id !== editingItem?.id
+    );
 
   const filteredItems = useMemo(() => {
     let list = products;
@@ -169,8 +177,7 @@ export default function InventoryPage() {
         costRaw === null || costRaw === undefined || costRaw === ''
           ? null
           : Number(costRaw);
-      const trimmedSku =
-        values.sku == null || values.sku === '' ? '' : String(values.sku).trim();
+      const trimmedSku = normalizeSkuInput(values.sku) ?? '';
       const basePayload = {
         name: values.name as string,
         categoryId: values.categoryId as string,
@@ -465,8 +472,18 @@ export default function InventoryPage() {
               <InputNumber min={0} className="w-full" size="large" />
             </Form.Item>
           </div>
-          <Form.Item name="sku" label="SKU (optional)">
-            <Input placeholder="e.g. LED-009" size="large" />
+          <Form.Item
+            name="sku"
+            label="SKU (optional)"
+            rules={skuFieldRules({ isTaken: isSkuTaken })}
+            extra="Letters, numbers, spaces, and symbols allowed. Max 64 characters. Clear to remove."
+          >
+            <Input
+              placeholder="Any code up to 64 characters"
+              size="large"
+              maxLength={SKU_MAX_LENGTH}
+              showCount
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -486,8 +503,9 @@ export default function InventoryPage() {
             <strong>
               SKU/Serial number, Name, Category, unit, quantity, reorder, cost price, selling price
             </strong>
-            . The Excel template includes dropdowns for category and unit from your system. New
-            categories are created automatically if typed in.
+            . SKUs are optional — any characters allowed, max {SKU_MAX_LENGTH}, and must be unique
+            when set. The Excel template includes dropdowns for category and unit, plus SKU notes.
+            New categories are created automatically if typed in.
           </Text>
           <Button
             icon={<DownloadOutlined />}

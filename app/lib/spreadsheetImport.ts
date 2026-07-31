@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type ExcelJS from 'exceljs';
+import { normalizeSkuInput, skuExceedsMaxLength, SKU_MAX_LENGTH } from './sku';
 
 export interface ProductImportRow {
   name: string;
@@ -113,12 +114,31 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
   }
 
   const out: ProductImportRow[] = [];
+  const seenSkus = new Map<string, string>();
+
   for (const raw of rows) {
     const r = normRow(raw);
     const name = pick(r, 'name');
     if (!name) continue;
 
     const costRaw = pick(r, 'costprice');
+    const rawSku = pick(r, 'sku');
+    if (skuExceedsMaxLength(rawSku)) {
+      throw new Error(
+        `SKU "${rawSku.slice(0, 24)}…" on product "${name}" exceeds ${SKU_MAX_LENGTH} characters`
+      );
+    }
+    const sku = normalizeSkuInput(rawSku) ?? undefined;
+    if (sku) {
+      const key = sku.toLowerCase();
+      const prior = seenSkus.get(key);
+      if (prior) {
+        throw new Error(
+          `Duplicate SKU "${sku}" in import file (products "${prior}" and "${name}"). SKUs must be unique.`
+        );
+      }
+      seenSkus.set(key, name);
+    }
     out.push({
       name,
       category: pick(r, 'category') || 'General',
@@ -127,7 +147,7 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
       reorderLevel: parseInt(pick(r, 'reorderlevel'), 10) || 0,
       price: parseFloat(pick(r, 'price')) || 0,
       costPrice: costRaw ? parseFloat(costRaw) || 0 : null,
-      sku: pick(r, 'sku') || undefined,
+      sku,
     });
   }
   return out;
@@ -174,14 +194,7 @@ function addListValidation(
       dataValidations: {
         add: (
           range: string,
-          validation: {
-            type: 'list';
-            allowBlank?: boolean;
-            showErrorMessage?: boolean;
-            errorTitle?: string;
-            error?: string;
-            formulae: string[];
-          }
+          validation: Record<string, unknown>
         ) => void;
       };
     }
@@ -193,6 +206,28 @@ function addListValidation(
     errorTitle: 'Invalid value',
     error: 'Please select a value from the dropdown list.',
     formulae: [`'${escapeSheetName(listSheetName)}'!$A$1:$A$${lastRow}`],
+  });
+}
+
+function addSkuLengthValidation(sheet: ExcelJS.Worksheet) {
+  const validations = (
+    sheet as ExcelJS.Worksheet & {
+      dataValidations: {
+        add: (range: string, validation: Record<string, unknown>) => void;
+      };
+    }
+  ).dataValidations;
+  validations.add('A2:A1001', {
+    type: 'textLength',
+    operator: 'lessThanOrEqual',
+    allowBlank: true,
+    showErrorMessage: true,
+    showInputMessage: true,
+    promptTitle: 'SKU / Serial',
+    prompt: `Optional. Any characters allowed (letters, numbers, spaces, symbols). Max ${SKU_MAX_LENGTH}.`,
+    errorTitle: 'SKU too long',
+    error: `SKU must be at most ${SKU_MAX_LENGTH} characters.`,
+    formulae: [SKU_MAX_LENGTH],
   });
 }
 
@@ -222,8 +257,9 @@ export async function downloadProductTemplate(options?: {
 
   const sampleCategory = categories[0] ?? 'Lighting';
   const sampleUnit = units[0] ?? 'units';
+  // Sample shows spaces/symbols are allowed — no character whitelist.
   sheet.addRow([
-    'LED-009',
+    'LED 9W / #009',
     'LED Bulb 9W',
     sampleCategory,
     sampleUnit,
@@ -238,7 +274,7 @@ export async function downloadProductTemplate(options?: {
   sheet.getColumn(8).numFmt = '0.00';
 
   sheet.columns = [
-    { key: 'sku', width: 18 },
+    { key: 'sku', width: 22 },
     { key: 'name', width: 22 },
     { key: 'category', width: 18 },
     { key: 'unit', width: 12 },
@@ -247,6 +283,8 @@ export async function downloadProductTemplate(options?: {
     { key: 'costPrice', width: 12 },
     { key: 'price', width: 14 },
   ];
+
+  addSkuLengthValidation(sheet);
 
   // Category = column C, unit = column D
   if (categories.length > 0) {
@@ -266,6 +304,22 @@ export async function downloadProductTemplate(options?: {
     unitSheet.state = 'veryHidden';
     addListValidation(sheet, 'D', 'Units', units.length);
   }
+
+  const notes = wb.addWorksheet('SKU notes');
+  notes.getColumn(1).width = 88;
+  notes.addRow(['SKU / Serial number rules']);
+  notes.getRow(1).font = { bold: true };
+  notes.addRow([
+    `• Optional. Leave blank if the product has no SKU.`,
+  ]);
+  notes.addRow([
+    `• Any characters are allowed: letters, numbers, spaces, symbols (e.g. LED 9W / #009).`,
+  ]);
+  notes.addRow([`• Maximum length: ${SKU_MAX_LENGTH} characters.`]);
+  notes.addRow([`• Must be unique when set (no two products with the same SKU).`]);
+  notes.addRow([
+    `• Clearing a SKU later in the app sends null to the API — do not use an empty string in updates.`,
+  ]);
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {

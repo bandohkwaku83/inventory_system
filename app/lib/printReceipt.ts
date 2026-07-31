@@ -1,9 +1,13 @@
+/** Thermal receipt paper width used for print CSS and on-screen preview. */
+export const RECEIPT_PAPER_WIDTH_MM = 80;
+/** Usable content width after small side margins on the roll. */
+export const RECEIPT_CONTENT_WIDTH_MM = 72;
+
 const PRINT_ROOT_ID = 'receipt-print-root';
 
 /**
  * Clone the on-screen receipt into a body-level print root, then print.
- * Avoids blank extra pages from dashboard/modal layout that still take space
- * when only `visibility: hidden` is used.
+ * Sized for small thermal receipt printers (default 80mm roll), not A4.
  */
 export function printReceipt(fromEl?: HTMLElement | null): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -25,7 +29,9 @@ export function printReceipt(fromEl?: HTMLElement | null): void {
     document.body.appendChild(root);
   }
 
-  root.replaceChildren(source.cloneNode(true));
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.classList.add('receipt-print-area--thermal');
+  root.replaceChildren(clone);
   document.body.classList.add('printing-receipt');
 
   const cleanup = () => {
@@ -35,10 +41,8 @@ export function printReceipt(fromEl?: HTMLElement | null): void {
   };
 
   window.addEventListener('afterprint', cleanup);
-  // Some browsers fire afterprint unreliably; also clean up on a timer.
   window.setTimeout(cleanup, 60_000);
 
-  // Let the clone paint before the print dialog opens.
   window.requestAnimationFrame(() => {
     window.print();
   });

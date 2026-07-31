@@ -202,6 +202,7 @@ export function ProductsProvider({
         if (updates.reorderLevel !== undefined) patch.reorderAt = updates.reorderLevel;
         if (updates.unit !== undefined) patch.unit = updates.unit;
         if (updates.sku !== undefined) {
+          // Empty string is rejected by the API — send null to clear.
           const s = updates.sku;
           patch.sku = s == null || String(s).trim() === '' ? null : String(s).trim();
         }

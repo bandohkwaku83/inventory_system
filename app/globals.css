@@ -146,20 +146,23 @@ body {
   margin: 14px 16px !important;
 }
 
-/* Receipt printing: clone lives in #receipt-print-root (see printReceipt()). */
+/* Receipt printing — thermal roll (80mm), not A4 */
 #receipt-print-root {
   display: none;
 }
 
 @media print {
   @page {
-    margin: 6mm;
-    size: auto;
+    /* Continuous thermal roll; drivers still pick the physical printer */
+    size: 80mm auto;
+    margin: 0;
   }
 
   html,
   body {
     background: #fff !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
@@ -167,7 +170,6 @@ body {
     padding: 0 !important;
   }
 
-  /* Hide the live app; only the cloned receipt root prints */
   body.printing-receipt > *:not(#receipt-print-root) {
     display: none !important;
   }
@@ -177,7 +179,7 @@ body {
     position: static !important;
     width: 80mm !important;
     max-width: 80mm !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 0 !important;
     background: #fff !important;
     color: #000 !important;
@@ -185,15 +187,82 @@ body {
 
   body.printing-receipt #receipt-print-root .receipt-print-area {
     position: static !important;
+    box-sizing: border-box !important;
     width: 80mm !important;
     max-width: 80mm !important;
     margin: 0 !important;
-    padding: 8px !important;
+    padding: 2mm 3mm 4mm !important;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
     background: #fff !important;
     color: #000 !important;
     font-family: 'Courier New', Courier, monospace !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body.printing-receipt .receipt-print-area * {
+    color: #000 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  body.printing-receipt .receipt-print-area img {
+    display: block !important;
+    max-height: 28px !important;
+    max-width: 48mm !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 auto 2mm !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+  }
+
+  body.printing-receipt .receipt-print-area h2 {
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    margin: 0 0 1mm !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  body.printing-receipt .receipt-print-area table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+  }
+
+  body.printing-receipt .receipt-print-area th,
+  body.printing-receipt .receipt-print-area td {
+    padding: 0.5mm 0.5mm !important;
+    font-size: 9px !important;
+    vertical-align: top !important;
+  }
+
+  body.printing-receipt .receipt-print-area th:nth-child(2),
+  body.printing-receipt .receipt-print-area td:nth-child(2) {
+    width: 10mm !important;
+    text-align: center !important;
+  }
+
+  body.printing-receipt .receipt-print-area th:nth-child(3),
+  body.printing-receipt .receipt-print-area td:nth-child(3) {
+    width: 18mm !important;
+    text-align: right !important;
+  }
+
+  body.printing-receipt .receipt-print-area .receipt-row,
+  body.printing-receipt .receipt-print-area .receipt-meta,
+  body.printing-receipt .receipt-print-area .receipt-totals {
+    font-size: 9px !important;
+  }
+
+  body.printing-receipt .receipt-print-area .receipt-total-line {
+    font-size: 11px !important;
+    font-weight: 700 !important;
   }
 
   body.printing-receipt .no-print {
