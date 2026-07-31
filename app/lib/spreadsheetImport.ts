@@ -11,6 +11,7 @@ export interface ProductImportRow {
   price: number;
   costPrice: number | null;
   sku?: string;
+  description?: string;
 }
 
 const HEADER_ALIASES: Record<string, string[]> = {
@@ -22,6 +23,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   price: ['price', 'sellingprice', 'selling'],
   costprice: ['costprice', 'cost'],
   sku: ['sku', 'sku/serialnumber', 'sku/serialno', 'serialnumber', 'serialno'],
+  description: ['description', 'desc', 'notes'],
 };
 
 function normKey(key: string): string {
@@ -104,8 +106,8 @@ const REQUIRED_FIELDS = [
 function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
   if (rows.length === 0) return [];
 
-  const first = normRow(rows[0]);
-  const keys = Object.keys(first);
+  // sheet_to_json uses the first spreadsheet row as keys on every object.
+  const keys = Object.keys(rows[0] ?? {}).map(normKey);
   const hasHeaders = REQUIRED_FIELDS.every((field) => hasField(keys, field));
   if (!hasHeaders) {
     throw new Error(
@@ -128,6 +130,7 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
       );
     }
     const sku = normalizeSkuInput(rawSku) ?? undefined;
+    const description = pick(r, 'description') || undefined;
     out.push({
       name,
       category: pick(r, 'category') || 'General',
@@ -135,8 +138,9 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
       quantity: parseInt(pick(r, 'quantity'), 10) || 0,
       reorderLevel: parseInt(pick(r, 'reorderlevel'), 10) || 0,
       price: parseFloat(pick(r, 'price')) || 0,
-      costPrice: costRaw ? parseFloat(costRaw) || 0 : null,
+      costPrice: costRaw !== '' ? parseFloat(costRaw) || 0 : null,
       sku,
+      description,
     });
   }
   return out;

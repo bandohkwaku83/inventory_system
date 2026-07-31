@@ -128,3 +128,40 @@ export async function dataUrlToFile(dataUrl: string, filename: string): Promise<
   const blob = await r.blob();
   return new File([blob], filename, { type: blob.type || 'image/jpeg' });
 }
+
+export async function createProductApi(input: {
+  name: string;
+  categoryId: string;
+  description?: string;
+  price: number;
+  costPrice?: number | null;
+  sku?: string | null;
+  barcode?: string | null;
+  unit: string;
+  quantity: number;
+  reorderLevel: number;
+  maxStock?: number | null;
+  image?: string | null;
+}): Promise<MappedProduct> {
+  const formData = new FormData();
+  formData.append('name', input.name);
+  formData.append('categoryId', input.categoryId);
+  formData.append('sellingPrice', String(input.price));
+  formData.append('unit', input.unit);
+  formData.append('stockQuantity', String(input.quantity));
+  formData.append('reorderAt', String(input.reorderLevel));
+  if (input.sku?.trim()) formData.append('sku', input.sku.trim());
+  if (input.barcode?.trim()) formData.append('barcode', input.barcode.trim());
+  if (input.maxStock != null) formData.append('maxStock', String(input.maxStock));
+  if (input.description?.trim()) formData.append('description', input.description.trim());
+  if (input.costPrice != null) formData.append('costPrice', String(input.costPrice));
+  if (input.image?.startsWith('data:')) {
+    const file = await dataUrlToFile(input.image, 'product.jpg');
+    formData.append('image', file);
+  }
+  const res = await fetch(apiUrl('/api/products'), { method: 'POST', body: formData });
+  if (!res.ok) throw new Error(await readApiError(res));
+  const data = (await res.json()) as ApiProduct;
+  return mapApiProduct(data);
+}
+

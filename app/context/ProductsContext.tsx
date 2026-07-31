@@ -12,7 +12,7 @@ import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
 import {
   apiUrl,
-  dataUrlToFile,
+  createProductApi,
   mapApiProduct,
   productResourceUrl,
   readApiError,
@@ -66,13 +66,26 @@ export function getStockStatus(quantity: number, reorderLevel: number): StockSta
   return 'Good';
 }
 
-const DEFAULT_UNITS = ['units', 'kg', 'g', 'liters', 'ml', 'box', 'pack', 'dozen'];
+const DEFAULT_UNITS = [
+  'units',
+  'pieces',
+  'kg',
+  'g',
+  'liters',
+  'ml',
+  'box',
+  'pack',
+  'dozen',
+];
 
 interface ProductsContextValue {
   products: Product[];
   productsLoading: boolean;
   refreshProducts: () => Promise<void>;
-  addProduct: (input: ProductInput) => Promise<void>;
+  addProduct: (
+    input: ProductInput,
+    options?: { quiet?: boolean; skipRefresh?: boolean }
+  ) => Promise<void>;
   updateProduct: (id: string, updates: Partial<ProductInput>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   deductQuantities: (items: { id: string; quantity: number }[]) => Promise<void>;
@@ -161,32 +174,22 @@ export function ProductsProvider({
   }, [categoryOptions]);
 
   const addProduct = useCallback(
-    async (input: ProductInput) => {
-      return runWithLoader(async () => {
-        const formData = new FormData();
-        formData.append('name', input.name);
-        formData.append('categoryId', input.categoryId);
-        formData.append('sellingPrice', String(input.price));
-        formData.append('unit', input.unit);
-        formData.append('stockQuantity', String(input.quantity));
-        formData.append('reorderAt', String(input.reorderLevel));
-        if (input.sku?.trim()) formData.append('sku', input.sku.trim());
-        if (input.barcode?.trim()) formData.append('barcode', input.barcode.trim());
-        if (input.maxStock != null) formData.append('maxStock', String(input.maxStock));
-        if (input.description?.trim()) formData.append('description', input.description.trim());
-        if (input.costPrice != null) formData.append('costPrice', String(input.costPrice));
-        if (input.image?.startsWith('data:')) {
-          const file = await dataUrlToFile(input.image, 'product.jpg');
-          formData.append('image', file);
+    async (
+      input: ProductInput,
+      options?: { quiet?: boolean; skipRefresh?: boolean }
+    ) => {
+      const run = async () => {
+        try {
+          await createProductApi(input);
+          if (!options?.skipRefresh) await refreshProducts();
+        } catch (e) {
+          const err = e instanceof Error ? e.message : 'Failed to create product';
+          if (!options?.quiet) message.error(err);
+          throw e instanceof Error ? e : new Error(err);
         }
-        const res = await fetch(apiUrl('/api/products'), { method: 'POST', body: formData });
-        if (!res.ok) {
-          const err = await readApiError(res);
-          message.error(err);
-          throw new Error(err);
-        }
-        await refreshProducts();
-      });
+      };
+      if (options?.quiet) return run();
+      return runWithLoader(run);
     },
     [refreshProducts, runWithLoader]
   );

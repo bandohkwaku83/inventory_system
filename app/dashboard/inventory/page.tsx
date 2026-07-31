@@ -46,6 +46,7 @@ export default function InventoryPage() {
     addProduct,
     updateProduct,
     deleteProduct,
+    refreshProducts,
     units,
     categories,
     categoryOptions,
@@ -97,26 +98,74 @@ export default function InventoryPage() {
           message.error('No product rows found in file');
           return;
         }
+
+        let imported = 0;
+        let failed = 0;
+        const failureSamples: string[] = [];
+
         for (const row of rows) {
-          const categoryId = await resolveCategoryId(row.category);
-          if (!categoryId) continue;
+          const categoryName = row.category.trim() || 'General';
+          let categoryId: string | null = null;
           try {
-            await addProduct({
-              name: row.name,
-              categoryId,
-              unit: row.unit,
-              quantity: row.quantity,
-              reorderLevel: row.reorderLevel,
-              price: row.price,
-              costPrice: row.costPrice,
-              sku: row.sku,
-              image: null,
-            });
-          } catch {
-            break;
+            categoryId = await resolveCategoryId(categoryName);
+          } catch (e) {
+            failed += 1;
+            if (failureSamples.length < 5) {
+              failureSamples.push(
+                `${row.name}: ${e instanceof Error ? e.message : 'category failed'}`
+              );
+            }
+            continue;
+          }
+          if (!categoryId) {
+            failed += 1;
+            if (failureSamples.length < 5) {
+              failureSamples.push(`${row.name}: could not resolve category "${categoryName}"`);
+            }
+            continue;
+          }
+
+          try {
+            await addProduct(
+              {
+                name: row.name,
+                categoryId,
+                unit: row.unit || 'units',
+                quantity: row.quantity,
+                reorderLevel: row.reorderLevel,
+                price: row.price,
+                costPrice: row.costPrice,
+                sku: row.sku,
+                description: row.description,
+                image: null,
+              },
+              { quiet: true, skipRefresh: true }
+            );
+            imported += 1;
+          } catch (e) {
+            failed += 1;
+            if (failureSamples.length < 5) {
+              failureSamples.push(
+                `${row.name}: ${e instanceof Error ? e.message : 'create failed'}`
+              );
+            }
           }
         }
+
+        await refreshProducts();
         setImportOpen(false);
+
+        if (imported > 0 && failed === 0) {
+          message.success(`Imported ${imported} product${imported === 1 ? '' : 's'}`);
+        } else if (imported > 0) {
+          message.warning(
+            `Imported ${imported}, failed ${failed}. ${failureSamples.join(' · ')}`
+          );
+        } else {
+          message.error(
+            `Import failed for all ${failed} rows. ${failureSamples.join(' · ')}`
+          );
+        }
       });
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Import failed');
