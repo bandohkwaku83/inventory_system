@@ -59,13 +59,6 @@ export default function InventoryPage() {
   const [importing, setImporting] = useState(false);
   const [form] = Form.useForm();
 
-  const isSkuTaken = (sku: string) =>
-    products.some(
-      (p) =>
-        p.sku?.trim().toLowerCase() === sku.toLowerCase() &&
-        p.id !== editingItem?.id
-    );
-
   const filteredItems = useMemo(() => {
     let list = products;
     if (statusFilter) {
@@ -475,8 +468,8 @@ export default function InventoryPage() {
           <Form.Item
             name="sku"
             label="SKU (optional)"
-            rules={skuFieldRules({ isTaken: isSkuTaken })}
-            extra="Letters, numbers, spaces, and symbols allowed. Max 64 characters. Clear to remove."
+            rules={skuFieldRules()}
+            extra="Letters, numbers, spaces, and symbols allowed. Max 64 characters. Duplicates allowed. Clear to remove."
           >
             <Input
               placeholder="Any code up to 64 characters"
@@ -503,9 +496,9 @@ export default function InventoryPage() {
             <strong>
               SKU/Serial number, Name, Category, unit, quantity, reorder, cost price, selling price
             </strong>
-            . SKUs are optional — any characters allowed, max {SKU_MAX_LENGTH}, and must be unique
-            when set. The Excel template includes dropdowns for category and unit, plus SKU notes.
-            New categories are created automatically if typed in.
+            . SKUs are optional — any characters allowed, max {SKU_MAX_LENGTH}, duplicates allowed.
+            The Excel template includes dropdowns for category and unit, plus SKU notes. New
+            categories are created automatically if typed in.
           </Text>
           <Button
             icon={<DownloadOutlined />}

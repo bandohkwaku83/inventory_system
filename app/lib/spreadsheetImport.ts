@@ -114,7 +114,6 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
   }
 
   const out: ProductImportRow[] = [];
-  const seenSkus = new Map<string, string>();
 
   for (const raw of rows) {
     const r = normRow(raw);
@@ -129,16 +128,6 @@ function rowsToImport(rows: Record<string, string>[]): ProductImportRow[] {
       );
     }
     const sku = normalizeSkuInput(rawSku) ?? undefined;
-    if (sku) {
-      const key = sku.toLowerCase();
-      const prior = seenSkus.get(key);
-      if (prior) {
-        throw new Error(
-          `Duplicate SKU "${sku}" in import file (products "${prior}" and "${name}"). SKUs must be unique.`
-        );
-      }
-      seenSkus.set(key, name);
-    }
     out.push({
       name,
       category: pick(r, 'category') || 'General',
@@ -316,7 +305,7 @@ export async function downloadProductTemplate(options?: {
     `• Any characters are allowed: letters, numbers, spaces, symbols (e.g. LED 9W / #009).`,
   ]);
   notes.addRow([`• Maximum length: ${SKU_MAX_LENGTH} characters.`]);
-  notes.addRow([`• Must be unique when set (no two products with the same SKU).`]);
+  notes.addRow([`• Duplicate SKUs are allowed.`]);
   notes.addRow([
     `• Clearing a SKU later in the app sends null to the API — do not use an empty string in updates.`,
   ]);

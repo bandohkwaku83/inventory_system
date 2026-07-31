@@ -1,4 +1,4 @@
-/** Backend SKU rules: any characters allowed; unique when set; max 64; clear with null. */
+/** Backend SKU rules: any characters allowed; max 64; clear with null. Duplicates allowed. */
 export const SKU_MAX_LENGTH = 64;
 
 /**
@@ -17,11 +17,8 @@ export function skuExceedsMaxLength(value: unknown): boolean {
   return String(value).trim().length > SKU_MAX_LENGTH;
 }
 
-/** Ant Design Form rules — letters, numbers, spaces, symbols all allowed. */
-export function skuFieldRules(options?: {
-  /** Return true if this SKU is already taken by another product. */
-  isTaken?: (sku: string) => boolean;
-}): Array<Record<string, unknown>> {
+/** Ant Design Form rules — letters, numbers, spaces, symbols all allowed. Duplicates OK. */
+export function skuFieldRules(): Array<Record<string, unknown>> {
   return [
     {
       max: SKU_MAX_LENGTH,
@@ -33,9 +30,6 @@ export function skuFieldRules(options?: {
         if (!sku) return;
         if (sku.length > SKU_MAX_LENGTH) {
           throw new Error(`SKU must be at most ${SKU_MAX_LENGTH} characters`);
-        }
-        if (options?.isTaken?.(sku)) {
-          throw new Error('This SKU is already in use');
         }
       },
     },

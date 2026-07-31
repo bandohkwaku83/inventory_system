@@ -39,13 +39,6 @@ export default function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [form] = Form.useForm();
 
-  const isSkuTaken = (sku: string) =>
-    products.some(
-      (p) =>
-        p.sku?.trim().toLowerCase() === sku.toLowerCase() &&
-        p.id !== editingProduct?.id
-    );
-
   const filteredProducts = useMemo(() => {
     let list = products;
     if (categoryFilter) {
@@ -471,8 +464,8 @@ export default function ProductsPage() {
             <Form.Item
               name="sku"
               label="SKU"
-              rules={skuFieldRules({ isTaken: isSkuTaken })}
-              extra="Optional. Letters, numbers, spaces, and symbols allowed. Max 64 characters. Clear the field to remove."
+              rules={skuFieldRules()}
+              extra="Optional. Letters, numbers, spaces, and symbols allowed. Max 64 characters. Duplicates allowed. Clear the field to remove."
             >
               <Input
                 placeholder="Any code up to 64 characters"
