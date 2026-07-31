@@ -43,7 +43,8 @@ export default function LoginPage() {
   const year = new Date().getFullYear();
 
   useEffect(() => {
-    if (!isBootstrapping && user) router.replace('/dashboard');
+    if (isBootstrapping || !user) return;
+    router.replace(user.mustResetPassword ? '/change-password' : '/dashboard');
   }, [user, isBootstrapping, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,8 +57,8 @@ export default function LoginPage() {
     }
     setSubmitting(true);
     try {
-      await login(trimmed, password);
-      router.push('/dashboard');
+      const next = await login(trimmed, password);
+      router.replace(next.mustResetPassword ? '/change-password' : '/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');
     } finally {
@@ -203,8 +204,7 @@ export default function LoginPage() {
 
                 <div className="-mt-0.5 text-right">
                   <a
-                    href="#"
-                    onClick={(e) => e.preventDefault()}
+                    href="/forgot-password"
                     className="text-sm font-medium text-red-500 underline-offset-2 hover:text-red-600 hover:underline"
                   >
                     Forgot password?

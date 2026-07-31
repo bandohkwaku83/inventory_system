@@ -160,8 +160,10 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
           });
           return updated;
         } catch (e) {
+          const msg = e instanceof Error ? e.message : '';
+          // Ownership / missing sale — never invent a local copy.
+          if (/not found|404/i.test(msg) || !existing) throw e;
           // Frontend fallback when PATCH is unavailable: merge locally.
-          if (!existing) throw e;
           const items =
             payload.items?.map((item) => {
               const prev = existing.items.find((i) => i.id === item.productId);

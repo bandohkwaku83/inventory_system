@@ -240,7 +240,7 @@ export default function SalesDashboard({
       ) : null}
       {canAccess('/dashboard/receipts') ? (
         <SectionCard
-          title="Recent sales"
+          title="My recent sales"
           subtitle="Your latest transactions"
           href="/dashboard/receipts"
           icon={ReceiptIcon}

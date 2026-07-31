@@ -15,6 +15,7 @@ import {
   Tag,
   Popconfirm,
   Spin,
+  message,
 } from 'antd';
 import type { TableProps } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
@@ -200,8 +201,13 @@ export default function SystemUsersPage() {
             categoryIds,
           };
           const password = (values.password as string | undefined)?.trim();
-          if (password) patch.password = password;
-          await updateUser(editingId, patch);
+          if (password) {
+            patch.password = password;
+            await updateUser(editingId, patch);
+            message.success('User updated. They must reset their password on next login.');
+          } else {
+            await updateUser(editingId, patch);
+          }
         } else {
           await addUser({
             staffId,
@@ -211,6 +217,7 @@ export default function SystemUsersPage() {
             categoryIds,
             active: true,
           });
+          message.success('User created. Invite email sent.');
         }
         setOpen(false);
       } catch {

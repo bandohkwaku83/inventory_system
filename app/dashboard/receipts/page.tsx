@@ -13,6 +13,7 @@ import {
   Typography,
   Tooltip,
   Select,
+  Empty,
   message,
 } from 'antd';
 import type { TableProps } from 'antd';
@@ -34,6 +35,8 @@ import {
   type SaleStatus,
 } from '../../context/SalesContext';
 import { useCustomers } from '../../context/CustomersContext';
+import { useAuth } from '../../context/AuthContext';
+import { isAdminRole } from '../../lib/permissions';
 
 const { Title, Text } = Typography;
 
@@ -45,8 +48,11 @@ export default function ReceiptsPage() {
   const router = useRouter();
   const { sales, updateSale } = useSales();
   const { refreshCustomers } = useCustomers();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && isAdminRole(user.role));
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [salespersonFilter, setSalespersonFilter] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Sale | null>(null);
 
@@ -58,8 +64,26 @@ export default function ReceiptsPage() {
 
   const [messageApi, messageCtx] = message.useMessage();
 
+  const salespersonOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sale of sales) {
+      const key = sale.servedBy || sale.servedByName;
+      if (!key) continue;
+      map.set(key, sale.servedByName || sale.servedBy || key);
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [sales]);
+
   const filteredReceipts = useMemo(() => {
     let list = sales;
+    // Admin-only UI filter — API already scopes non-admins to their own sales.
+    if (isAdmin && salespersonFilter) {
+      list = list.filter(
+        (r) => r.servedBy === salespersonFilter || r.servedByName === salespersonFilter
+      );
+    }
     if (statusFilter !== 'all') {
       list = list.filter((r) => r.status === statusFilter);
     }
@@ -71,9 +95,10 @@ export default function ReceiptsPage() {
         r.customer.toLowerCase().includes(q) ||
         r.date.includes(q) ||
         r.paymentMethod.toLowerCase().includes(q) ||
-        r.status.toLowerCase().includes(q)
+        r.status.toLowerCase().includes(q) ||
+        (r.servedByName ?? '').toLowerCase().includes(q)
     );
-  }, [sales, searchText, statusFilter]);
+  }, [sales, searchText, statusFilter, isAdmin, salespersonFilter]);
 
   const completeChange = (cashTendered || 0) - (completingSale?.total ?? 0);
 
@@ -151,6 +176,19 @@ export default function ReceiptsPage() {
       width: 140,
       render: (customer: string) => <Text>{customer || 'Walk-in'}</Text>,
     },
+    ...(isAdmin
+      ? [
+          {
+            title: 'Served by',
+            dataIndex: 'servedByName',
+            key: 'servedByName',
+            width: 140,
+            render: (name: string | undefined) => (
+              <Text type="secondary">{name || '—'}</Text>
+            ),
+          } satisfies NonNullable<TableProps<Sale>['columns']>[number],
+        ]
+      : []),
     { title: 'Date', dataIndex: 'date', key: 'date', width: 110 },
     { title: 'Time', dataIndex: 'time', key: 'time', width: 90 },
     {
@@ -242,16 +280,18 @@ export default function ReceiptsPage() {
       <div className="space-y-6">
         <div>
           <Title level={4} className="!mb-1 !font-bold !text-slate-800">
-            Receipts
+            {isAdmin ? 'All sales' : 'My sales'}
           </Title>
           <Text type="secondary">
-            Completed receipts and pending sales — resume pending ones on Sales (POS) or complete them here
+            {isAdmin
+              ? 'Completed receipts and pending sales across the team — resume pending ones on Sales (POS) or complete them here'
+              : 'Your completed receipts and pending sales — resume pending ones on Sales (POS) or complete them here'}
           </Text>
         </div>
 
         <Card className="shadow-sm" styles={{ body: { padding: 0 } }}>
           <div className="receipts-table-toolbar flex flex-col gap-4 border-b border-slate-100 bg-slate-50/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-            <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
               <Input
                 placeholder="Search by receipt ID, customer or payment..."
                 prefix={<SearchOutlined className="text-slate-400" />}
@@ -272,6 +312,19 @@ export default function ReceiptsPage() {
                   { value: 'pending', label: 'Pending' },
                 ]}
               />
+              {isAdmin ? (
+                <Select
+                  allowClear
+                  placeholder="Filter by salesperson"
+                  value={salespersonFilter ?? undefined}
+                  onChange={(v) => setSalespersonFilter(v ?? null)}
+                  size="large"
+                  className="w-full sm:w-52"
+                  options={salespersonOptions}
+                  optionFilterProp="label"
+                  showSearch
+                />
+              ) : null}
             </div>
             <Text type="secondary" className="shrink-0 text-sm">
               {filteredReceipts.length} sale{filteredReceipts.length !== 1 ? 's' : ''}
@@ -289,7 +342,15 @@ export default function ReceiptsPage() {
               defaultPageSize: 10,
             }}
             size="middle"
-            scroll={{ x: 880 }}
+            scroll={{ x: isAdmin ? 1020 : 880 }}
+            locale={{
+              emptyText: (
+                <Empty
+                  description={isAdmin ? 'No sales found' : 'No sales yet'}
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              ),
+            }}
           />
         </Card>
       </div>

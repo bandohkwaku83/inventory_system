@@ -4,10 +4,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import type { UserRole } from './UsersContext';
 import type { Permission } from '../lib/permissions';
 import {
+  changePasswordApi,
   clearStoredToken,
   fetchMe,
   getStoredToken,
   loginApi,
+  resetPasswordApi,
   type AuthUserResponse,
 } from '../lib/authApi';
 
@@ -20,6 +22,7 @@ export interface User {
   roleName: string;
   entitlements: Permission[];
   categoryIds: string[];
+  mustResetPassword: boolean;
 }
 
 function normalizeEntitlements(apiUser: AuthUserResponse): Permission[] {
@@ -38,13 +41,17 @@ function mapAuthUser(apiUser: AuthUserResponse): User {
     roleName: apiUser.role?.name?.trim() || '',
     entitlements: normalizeEntitlements(apiUser),
     categoryIds: Array.isArray(apiUser.categoryIds) ? apiUser.categoryIds : [],
+    mustResetPassword: Boolean(apiUser.mustResetPassword),
   };
 }
 
 interface AuthContextValue {
   user: User | null;
   isBootstrapping: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  applySessionUser: (apiUser: AuthUserResponse) => User;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<User>;
+  resetPassword: (token: string, password: string) => Promise<User>;
   logout: () => void;
 }
 
@@ -72,15 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
 
+  const applySessionUser = useCallback((apiUser: AuthUserResponse): User => {
+    const nextUser = mapAuthUser(apiUser);
+    setUser(nextUser);
+    persistUser(nextUser);
+    return nextUser;
+  }, []);
+
   useEffect(() => {
     void (async () => {
       try {
         if (!getStoredToken()) return;
 
         const apiUser = await fetchMe();
-        const nextUser = mapAuthUser(apiUser);
-        setUser(nextUser);
-        persistUser(nextUser);
+        applySessionUser(apiUser);
       } catch {
         clearStoredToken();
         clearPersistedUser();
@@ -89,19 +101,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsBootstrapping(false);
       }
     })();
-  }, []);
+  }, [applySessionUser]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !password) {
-      throw new Error('Enter your email and password.');
-    }
+  const login = useCallback(
+    async (email: string, password: string): Promise<User> => {
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail || !password) {
+        throw new Error('Enter your email and password.');
+      }
 
-    const { user: apiUser } = await loginApi(trimmedEmail, password);
-    const nextUser = mapAuthUser(apiUser);
-    setUser(nextUser);
-    persistUser(nextUser);
-  }, []);
+      const { user: apiUser } = await loginApi(trimmedEmail, password);
+      return applySessionUser(apiUser);
+    },
+    [applySessionUser]
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<User> => {
+      const { user: apiUser } = await changePasswordApi(currentPassword, newPassword);
+      return applySessionUser(apiUser);
+    },
+    [applySessionUser]
+  );
+
+  const resetPassword = useCallback(
+    async (token: string, password: string): Promise<User> => {
+      const { user: apiUser } = await resetPasswordApi(token, password);
+      return applySessionUser(apiUser);
+    },
+    [applySessionUser]
+  );
 
   const logout = useCallback(() => {
     setUser(null);
@@ -113,6 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     isBootstrapping,
     login,
+    applySessionUser,
+    changePassword,
+    resetPassword,
     logout,
   };
 

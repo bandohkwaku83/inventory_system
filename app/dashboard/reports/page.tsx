@@ -10,6 +10,7 @@ import {
   Segmented,
   Tag,
   Empty,
+  Select,
 } from 'antd';
 import type { TableProps } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -33,6 +34,8 @@ import {
 } from 'recharts';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useSales, type Sale, type SalePaymentMethod } from '../../context/SalesContext';
+import { useAuth } from '../../context/AuthContext';
+import { isAdminRole } from '../../lib/permissions';
 
 dayjs.extend(isoWeek);
 
@@ -125,24 +128,47 @@ function buildBuckets(
 
 export default function ReportsPage() {
   const { completedSales } = useSales();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && isAdminRole(user.role));
 
   const [period, setPeriod] = useState<Period>('day');
   const [anchor, setAnchor] = useState<Dayjs>(dayjs());
   const [methodFilter, setMethodFilter] = useState<MethodFilter>('all');
+  const [salespersonFilter, setSalespersonFilter] = useState<string | null>(null);
 
   const [start, end] = periodRange(period, anchor);
+
+  const salespersonOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const sale of completedSales) {
+      const key = sale.servedBy || sale.servedByName;
+      if (!key) continue;
+      map.set(key, sale.servedByName || sale.servedBy || key);
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [completedSales]);
 
   const periodSales = useMemo(
     () =>
       completedSales
         .filter((s) => {
           const d = dayjs(s.timestamp);
-          return !d.isBefore(start) && !d.isAfter(end);
+          if (d.isBefore(start) || d.isAfter(end)) return false;
+          // Admin-only UI filter — API already scopes non-admins to their own sales.
+          if (isAdmin && salespersonFilter) {
+            return (
+              s.servedBy === salespersonFilter ||
+              s.servedByName === salespersonFilter
+            );
+          }
+          return true;
         })
         .sort(
           (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf()
         ),
-    [completedSales, start, end]
+    [completedSales, start, end, isAdmin, salespersonFilter]
   );
 
   const cashSales = useMemo(
@@ -188,6 +214,7 @@ export default function ReportsPage() {
       'Date',
       'Time',
       'Customer',
+      ...(isAdmin ? ['Served by'] : []),
       'Payment method',
       'Items',
       'Subtotal',
@@ -199,6 +226,7 @@ export default function ReportsPage() {
       s.date,
       s.time,
       s.customer,
+      ...(isAdmin ? [s.servedByName || ''] : []),
       s.paymentMethod,
       s.items.reduce((n, it) => n + it.quantity, 0),
       s.subtotal.toFixed(2),
@@ -246,6 +274,19 @@ export default function ReportsPage() {
         <span className="text-[13px] text-slate-700">{v || 'Walk-in'}</span>
       ),
     },
+    ...(isAdmin
+      ? [
+          {
+            title: 'Served by',
+            dataIndex: 'servedByName',
+            key: 'servedByName',
+            width: 140,
+            render: (name: string | undefined) => (
+              <span className="text-[13px] text-slate-600">{name || '—'}</span>
+            ),
+          } satisfies NonNullable<TableProps<Sale>['columns']>[number],
+        ]
+      : []),
     {
       title: 'Payment',
       dataIndex: 'paymentMethod',
@@ -303,10 +344,12 @@ export default function ReportsPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <Title level={4} className="!mb-1 !font-bold !text-slate-800">
-              Sales reports
+              {isAdmin ? 'All sales' : 'My sales'}
             </Title>
             <Text type="secondary" className="block text-sm">
-              See sales taken with Cash and Mobile Money for any day, week, or month.
+              {isAdmin
+                ? 'Company-wide Cash and Mobile Money sales for any day, week, or month.'
+                : 'Your Cash and Mobile Money sales for any day, week, or month.'}
             </Text>
           </div>
           <Button
@@ -379,7 +422,7 @@ export default function ReportsPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
-            label="Total sales"
+            label={isAdmin ? 'Total sales' : 'My total'}
             value={currency(grandTotal)}
             icon={<ShoppingOutlined />}
             iconBg="bg-slate-100"
@@ -441,7 +484,7 @@ export default function ReportsPage() {
           {grandTotal === 0 ? (
             <div className="flex h-[280px] items-center justify-center">
               <Empty
-                description="No sales in this period"
+                description={isAdmin ? 'No sales in this period' : 'No sales yet'}
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
             </div>
@@ -504,23 +547,38 @@ export default function ReportsPage() {
 
         {/* Transactions table */}
         <Card className="shadow-sm" styles={{ body: { padding: 0 } }}>
-          <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-sm font-bold text-slate-800">
               Transactions
               <span className="ml-2 text-[12px] font-medium text-slate-500">
                 {filteredTable.length} shown
               </span>
             </h3>
-            <Segmented<MethodFilter>
-              value={methodFilter}
-              onChange={(v) => setMethodFilter(v)}
-              options={[
-                { label: 'All', value: 'all' },
-                { label: 'Cash', value: 'Cash' },
-                { label: 'Mobile Money', value: 'Mobile Money' },
-              ]}
-              size="small"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              {isAdmin ? (
+                <Select
+                  allowClear
+                  placeholder="Filter by salesperson"
+                  value={salespersonFilter ?? undefined}
+                  onChange={(v) => setSalespersonFilter(v ?? null)}
+                  size="small"
+                  className="min-w-[180px]"
+                  options={salespersonOptions}
+                  optionFilterProp="label"
+                  showSearch
+                />
+              ) : null}
+              <Segmented<MethodFilter>
+                value={methodFilter}
+                onChange={(v) => setMethodFilter(v)}
+                options={[
+                  { label: 'All', value: 'all' },
+                  { label: 'Cash', value: 'Cash' },
+                  { label: 'Mobile Money', value: 'Mobile Money' },
+                ]}
+                size="small"
+              />
+            </div>
           </div>
           <div className="p-3">
             <Table<Sale>
@@ -529,11 +587,11 @@ export default function ReportsPage() {
               rowKey="id"
               pagination={{ pageSize: 10, showSizeChanger: true }}
               size="middle"
-              scroll={{ x: 720 }}
+              scroll={{ x: isAdmin ? 860 : 720 }}
               locale={{
                 emptyText: (
                   <Empty
-                    description="No transactions"
+                    description={isAdmin ? 'No transactions' : 'No sales yet'}
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                   />
                 ),

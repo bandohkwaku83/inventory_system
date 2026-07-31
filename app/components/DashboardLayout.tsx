@@ -196,6 +196,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     if (isBootstrapping) return;
     if (!user) {
       router.replace('/login');
+      return;
+    }
+    if (user.mustResetPassword) {
+      router.replace('/change-password');
     }
   }, [user, isBootstrapping, router]);
 
@@ -258,6 +262,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [navQuery]);
 
   if (isBootstrapping || !user) return null;
+  if (user.mustResetPassword) return null;
 
   const canAccess = (path: string) =>
     userCanAccessPath(user.role, user.entitlements, path, roles);
@@ -519,6 +524,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         {roleLabel(user.role, roles, user.roleName)}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        router.push('/change-password');
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Change password
+                    </button>
                     <button
                       type="button"
                       onClick={() => {

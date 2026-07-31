@@ -206,7 +206,7 @@ function SalesPageInner() {
     const sale = sales.find((s) => s.id === editId || s.apiId === editId);
     if (!sale) {
       editHydratedRef.current = editId;
-      messageApi.error('Pending sale not found');
+      messageApi.error('Sale not found');
       router.replace('/dashboard/sales');
       return;
     }
