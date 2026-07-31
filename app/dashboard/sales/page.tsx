@@ -34,6 +34,7 @@ import { useSales, type Sale } from '../../context/SalesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useCustomers } from '../../context/CustomersContext';
+import { printReceipt } from '../../lib/printReceipt';
 
 const WALK_IN_VALUE = '__walk_in__';
 
@@ -1125,7 +1126,7 @@ function SalesPageInner() {
               <Button
                 type="primary"
                 icon={<PrinterOutlined />}
-                onClick={() => window.print()}
+                onClick={() => printReceipt()}
                 className="flex-1 !bg-[#1e3a5f] hover:!bg-[#2c5282]"
               >
                 Print receipt

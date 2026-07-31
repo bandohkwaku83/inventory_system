@@ -28,6 +28,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import ReceiptDocument from '../../components/ReceiptDocument';
 import { useProforma, type ProformaInvoice, type ProformaStatus } from '../../context/ProformaContext';
 import { useProducts } from '../../context/ProductsContext';
+import { printReceipt } from '../../lib/printReceipt';
 
 const { Title, Text } = Typography;
 
@@ -349,7 +350,7 @@ export default function ProformaInvoicesPage() {
               <Button
                 type="primary"
                 icon={<PrinterOutlined />}
-                onClick={() => window.print()}
+                onClick={() => printReceipt()}
                 className="flex-1 !bg-[#25395c]"
               >
                 Print proforma

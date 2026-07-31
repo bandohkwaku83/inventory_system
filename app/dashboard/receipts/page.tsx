@@ -37,6 +37,7 @@ import {
 import { useCustomers } from '../../context/CustomersContext';
 import { useAuth } from '../../context/AuthContext';
 import { isAdminRole } from '../../lib/permissions';
+import { printReceipt } from '../../lib/printReceipt';
 
 const { Title, Text } = Typography;
 
@@ -398,7 +399,7 @@ export default function ReceiptsPage() {
               <Button
                 type="primary"
                 icon={<PrinterOutlined />}
-                onClick={() => window.print()}
+                onClick={() => printReceipt()}
                 block
                 size="large"
                 className="no-print mt-4 !bg-[#25395c] hover:!bg-[#1a2842]"

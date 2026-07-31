@@ -146,10 +146,14 @@ body {
   margin: 14px 16px !important;
 }
 
-/* Receipts: print only .receipt-print-area (even when inside Ant Design Modal) */
+/* Receipt printing: clone lives in #receipt-print-root (see printReceipt()). */
+#receipt-print-root {
+  display: none;
+}
+
 @media print {
   @page {
-    margin: 8mm;
+    margin: 6mm;
     size: auto;
   }
 
@@ -157,67 +161,30 @@ body {
   body {
     background: #fff !important;
     height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
-  }
-
-  /* Hide chrome; receipt re-shows via visibility:visible below */
-  body * {
-    visibility: hidden !important;
-  }
-
-  .receipt-print-area,
-  .receipt-print-area * {
-    visibility: visible !important;
-  }
-
-  /*
-   * Receipts render inside Modal portals (.ant-modal-wrap).
-   * Never display:none those ancestors — that blanks the printout.
-   * Flatten modal chrome so the receipt can sit at the top of the page.
-   */
-  .ant-modal-mask {
-    display: none !important;
-  }
-
-  .ant-modal-wrap {
-    position: static !important;
-    inset: auto !important;
-    overflow: visible !important;
-    background: transparent !important;
-  }
-
-  .ant-modal {
-    position: static !important;
-    top: auto !important;
-    padding: 0 !important;
     margin: 0 !important;
-    max-width: none !important;
-    width: auto !important;
-    box-shadow: none !important;
-    transform: none !important;
-  }
-
-  .ant-modal-content {
-    box-shadow: none !important;
-    border: none !important;
-    background: transparent !important;
     padding: 0 !important;
   }
 
-  .ant-modal-header,
-  .ant-modal-close,
-  .ant-modal-footer {
+  /* Hide the live app; only the cloned receipt root prints */
+  body.printing-receipt > *:not(#receipt-print-root) {
     display: none !important;
   }
 
-  .ant-modal-body {
+  body.printing-receipt #receipt-print-root {
+    display: block !important;
+    position: static !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
     padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
   }
 
-  .receipt-print-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+  body.printing-receipt #receipt-print-root .receipt-print-area {
+    position: static !important;
     width: 80mm !important;
     max-width: 80mm !important;
     margin: 0 !important;
@@ -229,9 +196,7 @@ body {
     font-family: 'Courier New', Courier, monospace !important;
   }
 
-  .no-print,
-  .no-print * {
-    visibility: hidden !important;
+  body.printing-receipt .no-print {
     display: none !important;
   }
 }
