@@ -82,7 +82,7 @@ function SalesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { visibleProducts, refreshProducts } = useProducts();
-  const { sales, salesLoading, addSale, updateSale } = useSales();
+  const { sales, salesLoading, addSale, updateSale, refreshSales } = useSales();
   const { customers, addCustomer, refreshCustomers } = useCustomers();
   const { user } = useAuth();
   const { posPreferences } = useSettings();
@@ -90,6 +90,13 @@ function SalesPageInner() {
   const scanRef = useRef<InputRef>(null);
   const [completing, setCompleting] = useState(false);
   const [savingPending, setSavingPending] = useState(false);
+
+  // Ensure POS sees the API-scoped list (not date filters left by Sales history).
+  useEffect(() => {
+    void refreshSales().catch(() => {
+      /* keep existing list */
+    });
+  }, [refreshSales]);
 
   const [scan, setScan] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);

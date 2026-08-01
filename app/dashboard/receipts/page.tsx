@@ -15,8 +15,11 @@ import {
   Select,
   Empty,
   message,
+  DatePicker,
 } from 'antd';
 import type { TableProps } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
 import {
   SearchOutlined,
   EyeOutlined,
@@ -36,10 +39,11 @@ import {
 } from '../../context/SalesContext';
 import { useCustomers } from '../../context/CustomersContext';
 import { useAuth } from '../../context/AuthContext';
-import { isAdminRole } from '../../lib/permissions';
+import { canViewSalesHistory } from '../../lib/permissions';
 import { printReceipt } from '../../lib/printReceipt';
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 
 type StatusFilter = SaleStatus | 'all';
 
@@ -47,13 +51,20 @@ const currency = (v: number) => `GHS ${v.toFixed(2)}`;
 
 export default function ReceiptsPage() {
   const router = useRouter();
-  const { sales, updateSale } = useSales();
+  const { sales, updateSale, refreshSales, salesScope } = useSales();
   const { refreshCustomers } = useCustomers();
   const { user } = useAuth();
-  const isAdmin = Boolean(user && isAdminRole(user.role));
+  const canViewHistory =
+    canViewSalesHistory(user?.role, user?.entitlements) ||
+    Boolean(salesScope?.viewHistory);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [salespersonFilter, setSalespersonFilter] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(() => [
+    dayjs().startOf('day'),
+    dayjs().endOf('day'),
+  ]);
+  const [listLoading, setListLoading] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Sale | null>(null);
 
@@ -65,26 +76,53 @@ export default function ReceiptsPage() {
 
   const [messageApi, messageCtx] = message.useMessage();
 
-  const salespersonOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const sale of sales) {
-      const key = sale.servedBy || sale.servedByName;
-      if (!key) continue;
-      map.set(key, sale.servedByName || sale.servedBy || key);
-    }
-    return Array.from(map.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+  // History users: reload via API date / salesperson filters.
+  // Cashiers: skip — API already returns only their own sales for today.
+  useEffect(() => {
+    if (!canViewHistory) return;
+    let cancelled = false;
+    void (async () => {
+      setListLoading(true);
+      try {
+        await refreshSales({
+          from: dateRange?.[0]?.format('YYYY-MM-DD'),
+          to: dateRange?.[1]?.format('YYYY-MM-DD'),
+          servedBy: salespersonFilter ?? undefined,
+        });
+      } catch (e) {
+        if (!cancelled) {
+          messageApi.error(e instanceof Error ? e.message : 'Failed to load sales');
+        }
+      } finally {
+        if (!cancelled) setListLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewHistory, dateRange, salespersonFilter, refreshSales, messageApi]);
+
+  // Accumulate salesperson options across filtered fetches so the dropdown
+  // does not collapse to the currently selected cashier.
+  const [salespersonOptions, setSalespersonOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+  useEffect(() => {
+    setSalespersonOptions((prev) => {
+      const map = new Map(prev.map((o) => [o.value, o.label]));
+      for (const sale of sales) {
+        const key = sale.servedBy || sale.servedByName;
+        if (!key) continue;
+        map.set(key, sale.servedByName || sale.servedBy || key);
+      }
+      return Array.from(map.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    });
   }, [sales]);
 
   const filteredReceipts = useMemo(() => {
     let list = sales;
-    // Admin-only UI filter — API already scopes non-admins to their own sales.
-    if (isAdmin && salespersonFilter) {
-      list = list.filter(
-        (r) => r.servedBy === salespersonFilter || r.servedByName === salespersonFilter
-      );
-    }
     if (statusFilter !== 'all') {
       list = list.filter((r) => r.status === statusFilter);
     }
@@ -99,8 +137,7 @@ export default function ReceiptsPage() {
         r.status.toLowerCase().includes(q) ||
         (r.servedByName ?? '').toLowerCase().includes(q)
     );
-  }, [sales, searchText, statusFilter, isAdmin, salespersonFilter]);
-
+  }, [sales, searchText, statusFilter]);
   const completeChange = (cashTendered || 0) - (completingSale?.total ?? 0);
 
   useEffect(() => {
@@ -177,7 +214,7 @@ export default function ReceiptsPage() {
       width: 140,
       render: (customer: string) => <Text>{customer || 'Walk-in'}</Text>,
     },
-    ...(isAdmin
+    ...(canViewHistory
       ? [
           {
             title: 'Served by',
@@ -281,12 +318,12 @@ export default function ReceiptsPage() {
       <div className="space-y-6">
         <div>
           <Title level={4} className="!mb-1 !font-bold !text-slate-800">
-            {isAdmin ? 'All sales' : 'My sales'}
+            {canViewHistory ? 'Sales history' : "Today's sales"}
           </Title>
           <Text type="secondary">
-            {isAdmin
+            {canViewHistory
               ? 'Completed receipts and pending sales across the team — resume pending ones on Sales (POS) or complete them here'
-              : 'Your completed receipts and pending sales — resume pending ones on Sales (POS) or complete them here'}
+              : 'Your completed receipts and pending sales for today — resume pending ones on Sales (POS) or complete them here'}
           </Text>
         </div>
 
@@ -313,18 +350,29 @@ export default function ReceiptsPage() {
                   { value: 'pending', label: 'Pending' },
                 ]}
               />
-              {isAdmin ? (
-                <Select
-                  allowClear
-                  placeholder="Filter by salesperson"
-                  value={salespersonFilter ?? undefined}
-                  onChange={(v) => setSalespersonFilter(v ?? null)}
-                  size="large"
-                  className="w-full sm:w-52"
-                  options={salespersonOptions}
-                  optionFilterProp="label"
-                  showSearch
-                />
+              {canViewHistory ? (
+                <>
+                  <RangePicker
+                    value={dateRange}
+                    onChange={(v) =>
+                      setDateRange(v && v[0] && v[1] ? [v[0], v[1]] : null)
+                    }
+                    allowClear
+                    size="large"
+                    className="w-full sm:w-auto"
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Filter by salesperson"
+                    value={salespersonFilter ?? undefined}
+                    onChange={(v) => setSalespersonFilter(v ?? null)}
+                    size="large"
+                    className="w-full sm:w-52"
+                    options={salespersonOptions}
+                    optionFilterProp="label"
+                    showSearch
+                  />
+                </>
               ) : null}
             </div>
             <Text type="secondary" className="shrink-0 text-sm">
@@ -335,6 +383,7 @@ export default function ReceiptsPage() {
           <Table<Sale>
             columns={columns}
             dataSource={filteredReceipts}
+            loading={listLoading}
             rowKey="id"
             pagination={{
               showSizeChanger: true,
@@ -343,11 +392,11 @@ export default function ReceiptsPage() {
               defaultPageSize: 10,
             }}
             size="middle"
-            scroll={{ x: isAdmin ? 1020 : 880 }}
+            scroll={{ x: canViewHistory ? 1020 : 880 }}
             locale={{
               emptyText: (
                 <Empty
-                  description={isAdmin ? 'No sales found' : 'No sales yet'}
+                  description={canViewHistory ? 'No sales found' : 'No sales yet today'}
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 />
               ),

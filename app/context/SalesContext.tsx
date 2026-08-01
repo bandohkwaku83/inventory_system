@@ -17,8 +17,16 @@ import {
   type CreateSalePayload,
   type MappedSale,
   type SaleStatus,
+  type SalesListScope,
   type UpdateSalePayload,
 } from '../lib/salesApi';
+
+export type SalesFetchOptions = {
+  from?: string;
+  to?: string;
+  date?: string;
+  servedBy?: string;
+};
 
 export type SalePaymentMethod = 'Cash' | 'Mobile Money';
 export type { SaleStatus };
@@ -57,7 +65,9 @@ export interface SalesContextValue {
   pendingSales: Sale[];
   completedSales: Sale[];
   salesLoading: boolean;
-  refreshSales: () => Promise<void>;
+  /** Scope flags from the last GET /api/sales response. */
+  salesScope?: SalesListScope;
+  refreshSales: (options?: SalesFetchOptions) => Promise<void>;
   /** Persist a POS sale (default status: completed). */
   addSale: (payload: CreateSalePayload) => Promise<Sale>;
   /** Update an existing sale (parked cart edits, complete pending). */
@@ -97,17 +107,20 @@ function resolveUpdateId(sale: Sale): string {
 export function SalesProvider({ children }: { children: React.ReactNode }) {
   const { runWithLoader } = useActionLoader();
   const [sales, setSales] = useState<Sale[]>([]);
+  const [salesScope, setSalesScope] = useState<SalesListScope | undefined>();
   const [salesLoading, setSalesLoading] = useState(true);
 
-  const refreshSales = useCallback(async () => {
-    const list = await fetchSales();
+  const refreshSales = useCallback(async (options?: SalesFetchOptions) => {
+    const { sales: list, scope } = await fetchSales(undefined, options);
     setSales(list.map(fromMapped));
+    if (scope) setSalesScope(scope);
   }, []);
 
   useEffect(() => {
     void (async () => {
       setSalesLoading(true);
       try {
+        // Unfiltered load — API scopes cashiers to own sales today; managers get full list.
         await refreshSales();
       } catch (e) {
         message.error(e instanceof Error ? e.message : 'Failed to load sales');
@@ -228,6 +241,7 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
       pendingSales,
       completedSales,
       salesLoading,
+      salesScope,
       refreshSales,
       addSale,
       updateSale,
@@ -239,6 +253,7 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
       pendingSales,
       completedSales,
       salesLoading,
+      salesScope,
       refreshSales,
       addSale,
       updateSale,

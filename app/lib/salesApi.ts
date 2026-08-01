@@ -128,16 +128,37 @@ export function mapApiSale(sale: ApiSale): MappedSale {
   };
 }
 
-export async function fetchSales(status?: Exclude<SaleStatus, 'voided'>): Promise<MappedSale[]> {
+export type SalesListScope = {
+  viewAll: boolean;
+  viewHistory: boolean;
+  ownOnly: boolean;
+  todayOnly: boolean;
+  today: string;
+};
+
+export async function fetchSales(
+  status?: Exclude<SaleStatus, 'voided'>,
+  options?: {
+    from?: string;
+    to?: string;
+    date?: string;
+    servedBy?: string;
+  }
+): Promise<{ sales: MappedSale[]; scope?: SalesListScope }> {
   const all: MappedSale[] = [];
   let page = 1;
   let totalPages = 1;
+  let scope: SalesListScope | undefined;
 
   do {
     const query = new URLSearchParams();
     query.set('page', String(page));
     query.set('limit', '100');
     if (status) query.set('status', status);
+    if (options?.from) query.set('from', options.from);
+    if (options?.to) query.set('to', options.to);
+    if (options?.date) query.set('date', options.date);
+    if (options?.servedBy) query.set('servedBy', options.servedBy);
 
     const res = await fetch(apiUrl(`/api/sales?${query.toString()}`), {
       headers: authHeaders(),
@@ -147,7 +168,9 @@ export async function fetchSales(status?: Exclude<SaleStatus, 'voided'>): Promis
       items?: ApiSale[];
       sales?: ApiSale[];
       totalPages?: number;
+      scope?: SalesListScope;
     };
+    if (raw.scope) scope = raw.scope;
     const list = raw.items ?? raw.sales ?? [];
     for (const sale of list) {
       if (sale.status === 'voided') continue;
@@ -158,7 +181,7 @@ export async function fetchSales(status?: Exclude<SaleStatus, 'voided'>): Promis
     page += 1;
   } while (page <= totalPages);
 
-  return all;
+  return { sales: all, scope };
 }
 
 export async function createSale(

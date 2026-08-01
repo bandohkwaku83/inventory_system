@@ -386,7 +386,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           id: data._id ?? data.id ?? `cat-${slugify(trimmed)}`,
           name: data.name ?? trimmed,
         };
-        await refreshCategories();
+        // 200 = already existed (import-safe); 201 = newly created
+        if (res.status === 201) {
+          await refreshCategories();
+        } else {
+          setCategories((prev) =>
+            prev.some((c) => c.id === created.id) ? prev : [...prev, created]
+          );
+        }
         return created;
       });
     },

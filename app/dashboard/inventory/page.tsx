@@ -77,18 +77,6 @@ export default function InventoryPage() {
     return list;
   }, [products, searchText, statusFilter]);
 
-  const resolveCategoryId = async (categoryName: string): Promise<string | null> => {
-    const match =
-      categoryOptions.find((c) => c.name.toLowerCase() === categoryName.toLowerCase()) ??
-      findCategoryByName(
-        categoryOptions.map((c) => ({ id: c.id, name: c.name })),
-        categoryName
-      );
-    if (match) return match.id;
-    const created = await addCategory(categoryName);
-    return created.id;
-  };
-
   const importRows = async (file: File) => {
     setImporting(true);
     try {
@@ -98,6 +86,33 @@ export default function InventoryPage() {
           message.error('No product rows found in file');
           return;
         }
+
+        // Cache category name → id for this import so we don't re-POST the same category.
+        const categoryCache = new Map<string, string>(
+          categoryOptions.map((c) => [c.name.trim().toLowerCase(), c.id])
+        );
+
+        const resolveCategoryId = async (categoryName: string): Promise<string | null> => {
+          const key = categoryName.trim().toLowerCase();
+          const cached = categoryCache.get(key);
+          if (cached) return cached;
+
+          const match =
+            categoryOptions.find((c) => c.name.toLowerCase() === key) ??
+            findCategoryByName(
+              categoryOptions.map((c) => ({ id: c.id, name: c.name })),
+              categoryName
+            );
+          if (match) {
+            categoryCache.set(key, match.id);
+            return match.id;
+          }
+
+          const created = await addCategory(categoryName);
+          categoryCache.set(key, created.id);
+          categoryCache.set(created.name.trim().toLowerCase(), created.id);
+          return created.id;
+        };
 
         let imported = 0;
         let failed = 0;

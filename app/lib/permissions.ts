@@ -19,6 +19,7 @@ export type Permission =
   | 'all_categories'
   | 'sales_pos'
   | 'sales_reports'
+  | 'sales_history'
   | 'receipts'
   | 'proforma_invoices'
   | 'customers'
@@ -87,6 +88,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { key: 'sales_pos', label: 'Sales (POS)', description: 'Process point-of-sale transactions' },
       { key: 'sales_reports', label: 'Sales Reports', description: 'View sales analytics' },
+      {
+        key: 'sales_history',
+        label: 'Sales History',
+        description:
+          'View sales for any date and all cashiers. Without this, users only see their own sales for today.',
+      },
       { key: 'receipts', label: 'Receipts', description: 'View and reprint receipts' },
       { key: 'customers', label: 'Customers', description: 'Customer accounts and receivables' },
     ],
@@ -197,6 +204,7 @@ export const ROLE_DASHBOARD_VARIANT: Record<string, DashboardVariant> = {
   admin: 'admin',
   cashier: 'sales',
   sales: 'sales',
+  sales_manager: 'sales',
   gra_reporter: 'finance',
   accountant: 'finance',
   inventory_manager: 'inventory',
@@ -220,6 +228,7 @@ export const DASHBOARD_VARIANT_LABELS: Record<DashboardVariant, string> = {
 export const SYSTEM_ROLE_IDS = [
   'admin',
   'sales',
+  'sales_manager',
   'inventory_manager',
   'store_keeper',
   'requester',
@@ -241,13 +250,31 @@ export const DEFAULT_ROLES: RoleDefinition[] = [
   {
     id: 'sales',
     name: 'Sales Representative',
-    description: 'Point-of-sale, receipts, and sales reporting',
+    description: 'POS and today\'s own sales only',
     permissions: [
       'dashboard',
       'products',
       'price_list',
       'sales_pos',
       'sales_reports',
+      'receipts',
+      'proforma_invoices',
+      'customers',
+    ],
+    isSystem: true,
+  },
+  {
+    id: 'sales_manager',
+    name: 'Sales Manager',
+    description: 'POS plus full sales history across all cashiers',
+    permissions: [
+      'dashboard',
+      'charts',
+      'products',
+      'price_list',
+      'sales_pos',
+      'sales_reports',
+      'sales_history',
       'receipts',
       'proforma_invoices',
       'customers',
@@ -274,6 +301,8 @@ export const DEFAULT_ROLES: RoleDefinition[] = [
       'stock_management',
       'stock_transfers',
       'approvals',
+      'sales_reports',
+      'sales_history',
     ],
     isSystem: true,
   },
@@ -310,6 +339,7 @@ export const DEFAULT_ROLES: RoleDefinition[] = [
       'inventory',
       'warehouses',
       'sales_reports',
+      'sales_history',
       'audit_log',
       'activity_log',
     ],
@@ -323,6 +353,7 @@ export const DEFAULT_ROLES: RoleDefinition[] = [
       'dashboard',
       'charts',
       'sales_reports',
+      'sales_history',
       'receipts',
       'proforma_invoices',
       'expenses',
@@ -420,6 +451,15 @@ export function canAccessPath(roleId: string, path: string, roles: RoleDefinitio
 
 export function hasEntitlement(entitlements: Permission[] | undefined, permission: Permission): boolean {
   return Boolean(entitlements?.includes(permission));
+}
+
+/** Full sales list (any date, all cashiers). Cashiers without this only see their own sales today. */
+export function canViewSalesHistory(
+  roleId: string | undefined | null,
+  entitlements?: Permission[]
+): boolean {
+  if (roleId && isAdminRole(roleId)) return true;
+  return hasEntitlement(entitlements, 'sales_history');
 }
 
 export function hasAnyEntitlement(

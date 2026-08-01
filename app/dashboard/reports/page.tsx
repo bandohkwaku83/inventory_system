@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Card,
   Button,
@@ -35,7 +35,7 @@ import {
 import DashboardLayout from '../../components/DashboardLayout';
 import { useSales, type Sale, type SalePaymentMethod } from '../../context/SalesContext';
 import { useAuth } from '../../context/AuthContext';
-import { isAdminRole } from '../../lib/permissions';
+import { canViewSalesHistory } from '../../lib/permissions';
 
 dayjs.extend(isoWeek);
 
@@ -127,9 +127,11 @@ function buildBuckets(
 }
 
 export default function ReportsPage() {
-  const { completedSales } = useSales();
+  const { completedSales, refreshSales, salesScope } = useSales();
   const { user } = useAuth();
-  const isAdmin = Boolean(user && isAdminRole(user.role));
+  const canViewHistory =
+    canViewSalesHistory(user?.role, user?.entitlements) ||
+    Boolean(salesScope?.viewHistory);
 
   const [period, setPeriod] = useState<Period>('day');
   const [anchor, setAnchor] = useState<Dayjs>(dayjs());
@@ -138,16 +140,33 @@ export default function ReportsPage() {
 
   const [start, end] = periodRange(period, anchor);
 
-  const salespersonOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const sale of completedSales) {
-      const key = sale.servedBy || sale.servedByName;
-      if (!key) continue;
-      map.set(key, sale.servedByName || sale.servedBy || key);
-    }
-    return Array.from(map.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+  // Managers: load the selected period from the API. Cashiers already only have today.
+  useEffect(() => {
+    if (!canViewHistory) return;
+    void refreshSales({
+      from: start.format('YYYY-MM-DD'),
+      to: end.format('YYYY-MM-DD'),
+      servedBy: salespersonFilter ?? undefined,
+    }).catch(() => {
+      /* keep existing list */
+    });
+  }, [canViewHistory, start, end, salespersonFilter, refreshSales]);
+
+  const [salespersonOptions, setSalespersonOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+  useEffect(() => {
+    setSalespersonOptions((prev) => {
+      const map = new Map(prev.map((o) => [o.value, o.label]));
+      for (const sale of completedSales) {
+        const key = sale.servedBy || sale.servedByName;
+        if (!key) continue;
+        map.set(key, sale.servedByName || sale.servedBy || key);
+      }
+      return Array.from(map.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    });
   }, [completedSales]);
 
   const periodSales = useMemo(
@@ -156,19 +175,12 @@ export default function ReportsPage() {
         .filter((s) => {
           const d = dayjs(s.timestamp);
           if (d.isBefore(start) || d.isAfter(end)) return false;
-          // Admin-only UI filter — API already scopes non-admins to their own sales.
-          if (isAdmin && salespersonFilter) {
-            return (
-              s.servedBy === salespersonFilter ||
-              s.servedByName === salespersonFilter
-            );
-          }
           return true;
         })
         .sort(
           (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf()
         ),
-    [completedSales, start, end, isAdmin, salespersonFilter]
+    [completedSales, start, end]
   );
 
   const cashSales = useMemo(
@@ -214,7 +226,7 @@ export default function ReportsPage() {
       'Date',
       'Time',
       'Customer',
-      ...(isAdmin ? ['Served by'] : []),
+      ...(canViewHistory ? ['Served by'] : []),
       'Payment method',
       'Items',
       'Subtotal',
@@ -226,7 +238,7 @@ export default function ReportsPage() {
       s.date,
       s.time,
       s.customer,
-      ...(isAdmin ? [s.servedByName || ''] : []),
+      ...(canViewHistory ? [s.servedByName || ''] : []),
       s.paymentMethod,
       s.items.reduce((n, it) => n + it.quantity, 0),
       s.subtotal.toFixed(2),
@@ -274,7 +286,7 @@ export default function ReportsPage() {
         <span className="text-[13px] text-slate-700">{v || 'Walk-in'}</span>
       ),
     },
-    ...(isAdmin
+    ...(canViewHistory
       ? [
           {
             title: 'Served by',
@@ -344,12 +356,12 @@ export default function ReportsPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <Title level={4} className="!mb-1 !font-bold !text-slate-800">
-              {isAdmin ? 'All sales' : 'My sales'}
+              {canViewHistory ? 'Sales reports' : "Today's sales"}
             </Title>
             <Text type="secondary" className="block text-sm">
-              {isAdmin
+              {canViewHistory
                 ? 'Company-wide Cash and Mobile Money sales for any day, week, or month.'
-                : 'Your Cash and Mobile Money sales for any day, week, or month.'}
+                : 'Your Cash and Mobile Money sales for today.'}
             </Text>
           </div>
           <Button
@@ -422,7 +434,7 @@ export default function ReportsPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
-            label={isAdmin ? 'Total sales' : 'My total'}
+            label={canViewHistory ? 'Total sales' : 'My total'}
             value={currency(grandTotal)}
             icon={<ShoppingOutlined />}
             iconBg="bg-slate-100"
@@ -484,7 +496,7 @@ export default function ReportsPage() {
           {grandTotal === 0 ? (
             <div className="flex h-[280px] items-center justify-center">
               <Empty
-                description={isAdmin ? 'No sales in this period' : 'No sales yet'}
+                description={canViewHistory ? 'No sales in this period' : 'No sales yet'}
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
             </div>
@@ -555,7 +567,7 @@ export default function ReportsPage() {
               </span>
             </h3>
             <div className="flex flex-wrap items-center gap-2">
-              {isAdmin ? (
+              {canViewHistory ? (
                 <Select
                   allowClear
                   placeholder="Filter by salesperson"
@@ -587,11 +599,11 @@ export default function ReportsPage() {
               rowKey="id"
               pagination={{ pageSize: 10, showSizeChanger: true }}
               size="middle"
-              scroll={{ x: isAdmin ? 860 : 720 }}
+              scroll={{ x: canViewHistory ? 860 : 720 }}
               locale={{
                 emptyText: (
                   <Empty
-                    description={isAdmin ? 'No transactions' : 'No sales yet'}
+                    description={canViewHistory ? 'No transactions' : 'No sales yet'}
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                   />
                 ),
