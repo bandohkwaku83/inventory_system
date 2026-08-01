@@ -18,6 +18,13 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: 'Onyx Build & Partners Limited',
   description: 'Inventory management for Onyx Build & Partners Limited',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '32x32' },
+    ],
+    apple: [{ url: '/apple-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
 };
 
 export const viewport: Viewport = {
