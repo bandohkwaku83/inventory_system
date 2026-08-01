@@ -150,10 +150,6 @@ export default function ReceiptDocument({
           <span>{formatGhs(tax.getfund)}</span>
         </div>
         <div className="receipt-row flex justify-between gap-1">
-          <span className="text-slate-500">COVID Levy (1%)</span>
-          <span>{formatGhs(tax.covidLevy)}</span>
-        </div>
-        <div className="receipt-row flex justify-between gap-1">
           <span className="text-slate-500">VAT (15%)</span>
           <span>{formatGhs(tax.vat)}</span>
         </div>

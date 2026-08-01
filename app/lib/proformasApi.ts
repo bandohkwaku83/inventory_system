@@ -14,7 +14,6 @@ export interface ApiTaxBreakdown {
   taxableValue: number;
   nhil: number;
   getfund: number;
-  covid: number;
   vat: number;
   leviesTotal: number;
   taxInclusiveMultiplier: number;

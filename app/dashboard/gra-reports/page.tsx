@@ -46,7 +46,6 @@ interface GraTaxRow {
   taxableValue: number;
   nhil: number;
   getfund: number;
-  covidLevy: number;
   vat: number;
   totalTax: number;
   discount: number;
@@ -58,10 +57,9 @@ type PeriodPreset = 'this-month' | 'last-month' | 'quarter' | 'custom';
 function taxFromBreakdown(tax: {
   nhil: number;
   getfund: number;
-  covid: number;
   vat: number;
 }) {
-  return tax.nhil + tax.getfund + tax.covid + tax.vat;
+  return tax.nhil + tax.getfund + tax.vat;
 }
 
 /** Display as "6 Jun 2026" */
@@ -98,7 +96,6 @@ function mapSaleItemToRow(
     taxableValue: tax.taxableValue,
     nhil: tax.nhil,
     getfund: tax.getfund,
-    covidLevy: tax.covid,
     vat: tax.vat,
     totalTax: taxFromBreakdown(tax),
     discount: item.lineDiscount,
@@ -126,7 +123,6 @@ function flattenSaleItems(sales: GraSaleRow[]): GraTaxRow[] {
       taxableValue: tax.taxableValue,
       nhil: tax.nhil,
       getfund: tax.getfund,
-      covidLevy: tax.covid,
       vat: tax.vat,
       totalTax: taxFromBreakdown(tax),
       discount: sale.discount,
@@ -221,7 +217,7 @@ export default function GraReportsPage() {
 
   const totalTax = useMemo(() => {
     if (!summary) return 0;
-    return summary.nhil + summary.getfund + summary.covid + summary.vat;
+    return summary.nhil + summary.getfund + summary.vat;
   }, [summary]);
 
   const applyPreset = (next: Exclude<PeriodPreset, 'custom'>) => {
@@ -243,7 +239,6 @@ export default function GraReportsPage() {
       'Taxable Value (GHS)',
       'NHIL (GHS)',
       'GETFund (GHS)',
-      'COVID Levy (GHS)',
       'VAT (GHS)',
       'Total Tax (GHS)',
       'Discount (GHS)',
@@ -258,7 +253,6 @@ export default function GraReportsPage() {
       r.taxableValue.toFixed(2),
       r.nhil.toFixed(2),
       r.getfund.toFixed(2),
-      r.covidLevy.toFixed(2),
       r.vat.toFixed(2),
       r.totalTax.toFixed(2),
       r.discount.toFixed(2),
@@ -273,7 +267,6 @@ export default function GraReportsPage() {
       summary.taxableValue.toFixed(2),
       summary.nhil.toFixed(2),
       summary.getfund.toFixed(2),
-      summary.covid.toFixed(2),
       summary.vat.toFixed(2),
       totalTax.toFixed(2),
       summary.totalDiscount.toFixed(2),
@@ -360,16 +353,6 @@ export default function GraReportsPage() {
       width: 92,
       render: (v: number) => (
         <span className="tabular-nums text-[12px] text-emerald-700">{formatGhs(v)}</span>
-      ),
-    },
-    {
-      title: 'COVID',
-      dataIndex: 'covidLevy',
-      key: 'covidLevy',
-      align: 'right',
-      width: 92,
-      render: (v: number) => (
-        <span className="tabular-nums text-[12px] text-amber-700">{formatGhs(v)}</span>
       ),
     },
     {
@@ -616,7 +599,7 @@ export default function GraReportsPage() {
                   showTotal: (t) => `${t} line items`,
                   className: '!px-4',
                 }}
-                scroll={{ x: 1180 }}
+                scroll={{ x: 1080 }}
                 size="middle"
                 className="[&_.ant-table-thead>tr>th]:!bg-slate-50 [&_.ant-table-thead>tr>th]:!text-[11px] [&_.ant-table-thead>tr>th]:!font-semibold [&_.ant-table-thead>tr>th]:!uppercase [&_.ant-table-thead>tr>th]:!tracking-wide [&_.ant-table-thead>tr>th]:!text-slate-500"
                 locale={{

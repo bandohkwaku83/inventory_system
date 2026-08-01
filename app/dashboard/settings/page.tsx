@@ -880,10 +880,6 @@ export default function SettingsPage() {
                               <span className="font-semibold">{(GHANA_TAX_RATES.getfund * 100).toFixed(1)}%</span>
                             </li>
                             <li className="flex justify-between gap-4">
-                              <span>COVID levy</span>
-                              <span className="font-semibold">{(GHANA_TAX_RATES.covidLevy * 100).toFixed(1)}%</span>
-                            </li>
-                            <li className="flex justify-between gap-4">
                               <span>VAT</span>
                               <span className="font-semibold">{(GHANA_TAX_RATES.vat * 100).toFixed(1)}%</span>
                             </li>

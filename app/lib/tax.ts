@@ -3,7 +3,6 @@
 export const GHANA_TAX_RATES = {
   nhil: 0.025,
   getfund: 0.025,
-  covidLevy: 0.01,
   vat: 0.15,
 } as const;
 
@@ -12,16 +11,13 @@ export const GHANA_INCLUSIVE_MULTIPLIER =
   1 +
   GHANA_TAX_RATES.nhil +
   GHANA_TAX_RATES.getfund +
-  GHANA_TAX_RATES.covidLevy +
-  (1 + GHANA_TAX_RATES.nhil + GHANA_TAX_RATES.getfund + GHANA_TAX_RATES.covidLevy) *
-    GHANA_TAX_RATES.vat;
+  (1 + GHANA_TAX_RATES.nhil + GHANA_TAX_RATES.getfund) * GHANA_TAX_RATES.vat;
 
 export interface TaxBreakdown {
   /** Tax-exclusive subtotal before discount. */
   taxableValue: number;
   nhil: number;
   getfund: number;
-  covidLevy: number;
   vat: number;
   /** Sum of all tax components. */
   totalTax: number;
@@ -43,17 +39,15 @@ export function breakdownTaxInclusive(
   const taxableValue = roundMoney(afterDiscount / GHANA_INCLUSIVE_MULTIPLIER);
   const nhil = roundMoney(taxableValue * GHANA_TAX_RATES.nhil);
   const getfund = roundMoney(taxableValue * GHANA_TAX_RATES.getfund);
-  const covidLevy = roundMoney(taxableValue * GHANA_TAX_RATES.covidLevy);
-  const vatBase = taxableValue + nhil + getfund + covidLevy;
+  const vatBase = taxableValue + nhil + getfund;
   const vat = roundMoney(vatBase * GHANA_TAX_RATES.vat);
-  const totalTax = roundMoney(nhil + getfund + covidLevy + vat);
+  const totalTax = roundMoney(nhil + getfund + vat);
   const grandTotal = roundMoney(taxableValue + totalTax);
 
   return {
     taxableValue,
     nhil,
     getfund,
-    covidLevy,
     vat,
     totalTax,
     grandTotal,

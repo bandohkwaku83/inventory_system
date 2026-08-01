@@ -5,7 +5,6 @@ export interface GraTaxBreakdown {
   taxableValue: number;
   nhil: number;
   getfund: number;
-  covid: number;
   vat: number;
 }
 
@@ -47,7 +46,6 @@ export interface GraReportSummary {
   taxableValue: number;
   nhil: number;
   getfund: number;
-  covid: number;
   vat: number;
   currency: string;
 }
