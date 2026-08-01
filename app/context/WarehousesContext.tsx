@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import {
   createWarehouse as createWarehouseApi,
   deleteWarehouse as deleteWarehouseApi,
@@ -37,6 +38,7 @@ interface WarehousesContextValue {
 const WarehousesContext = createContext<WarehousesContextValue | null>(null);
 
 export function WarehousesProvider({ children }: { children: React.ReactNode }) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehousesLoading, setWarehousesLoading] = useState(true);
@@ -52,6 +54,13 @@ export function WarehousesProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setWarehouses([]);
+      setWarehousesLoading(false);
+      return;
+    }
+
     void (async () => {
       setWarehousesLoading(true);
       try {
@@ -62,7 +71,7 @@ export function WarehousesProvider({ children }: { children: React.ReactNode }) 
         setWarehousesLoading(false);
       }
     })();
-  }, [refreshWarehouses]);
+  }, [isBootstrapping, user, refreshWarehouses]);
 
   const addWarehouse = useCallback(
     async (input: CreateWarehousePayload) => {

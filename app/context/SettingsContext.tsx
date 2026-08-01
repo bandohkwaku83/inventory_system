@@ -208,7 +208,7 @@ function persist(partial: StoredSettings) {
 }
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const stored = useMemo(() => loadSettings(), []);
   const storedCategories = stored.categories;
@@ -302,6 +302,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping || !user) return;
+
     void (async () => {
       setSettingsLoading(true);
       try {
@@ -312,9 +314,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setSettingsLoading(false);
       }
     })();
-  }, [refreshAppSettings]);
+  }, [isBootstrapping, user, refreshAppSettings]);
 
   useEffect(() => {
+    if (isBootstrapping) return;
     if (!user) {
       setRoles(DEFAULT_ROLES);
       setRolesLoading(false);
@@ -333,9 +336,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRolesLoading(false);
       }
     })();
-  }, [user, refreshRoles]);
+  }, [isBootstrapping, user, refreshRoles]);
 
   useEffect(() => {
+    if (isBootstrapping || !user) return;
+
     void (async () => {
       try {
         await refreshCategories();
@@ -347,9 +352,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         }
       }
     })();
-  }, [refreshCategories, storedCategories]);
+  }, [isBootstrapping, user, refreshCategories, storedCategories]);
 
   useEffect(() => {
+    if (isBootstrapping) return;
     if (!user) {
       setDepartments(DEFAULT_DEPARTMENTS);
       return;
@@ -361,7 +367,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         /* keep empty until server is available */
       }
     })();
-  }, [user, refreshDepartments]);
+  }, [isBootstrapping, user, refreshDepartments]);
 
   const addCategory = useCallback(
     async (name: string): Promise<ProductCategory> => {

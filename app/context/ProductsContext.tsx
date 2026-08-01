@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import {
   apiUrl,
   createProductApi,
@@ -111,6 +112,7 @@ export function ProductsProvider({
   extraCategories = [],
   allowedCategoryIds = [],
 }: ProductsProviderProps) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -142,6 +144,13 @@ export function ProductsProvider({
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setProducts([]);
+      setProductsLoading(false);
+      return;
+    }
+
     void (async () => {
       setProductsLoading(true);
       try {
@@ -152,7 +161,7 @@ export function ProductsProvider({
         setProductsLoading(false);
       }
     })();
-  }, [refreshProducts, fetchUnitsMeta]);
+  }, [isBootstrapping, user, refreshProducts, fetchUnitsMeta]);
 
   const categoryOptions = useMemo(() => {
     const map = new Map<string, CategoryOption>();

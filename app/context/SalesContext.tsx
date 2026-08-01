@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import {
   createSale as createSaleApi,
   fetchSales,
@@ -105,6 +106,7 @@ function resolveUpdateId(sale: Sale): string {
 }
 
 export function SalesProvider({ children }: { children: React.ReactNode }) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [sales, setSales] = useState<Sale[]>([]);
   const [salesScope, setSalesScope] = useState<SalesListScope | undefined>();
@@ -117,6 +119,14 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setSales([]);
+      setSalesScope(undefined);
+      setSalesLoading(false);
+      return;
+    }
+
     void (async () => {
       setSalesLoading(true);
       try {
@@ -128,7 +138,7 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
         setSalesLoading(false);
       }
     })();
-  }, [refreshSales]);
+  }, [isBootstrapping, user, refreshSales]);
 
   const addSale = useCallback(
     async (payload: CreateSalePayload) => {

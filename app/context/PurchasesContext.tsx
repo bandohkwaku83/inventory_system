@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import { apiUrl, readApiError } from '../lib/productsApi';
 import {
   mapApiPurchase,
@@ -92,6 +93,7 @@ interface PurchasesContextValue {
 const PurchasesContext = createContext<PurchasesContextValue | null>(null);
 
 export function PurchasesProvider({ children }: { children: React.ReactNode }) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(true);
@@ -143,6 +145,14 @@ export function PurchasesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setPurchases([]);
+      setPurchasesSummary(null);
+      setPurchasesLoading(false);
+      return;
+    }
+
     void (async () => {
       setPurchasesLoading(true);
       try {
@@ -158,7 +168,7 @@ export function PurchasesProvider({ children }: { children: React.ReactNode }) {
         setPurchasesSummary(null);
       }
     })();
-  }, [refreshPurchases, refreshSummary]);
+  }, [isBootstrapping, user, refreshPurchases, refreshSummary]);
 
   const addPurchase = useCallback(
     async (p: Omit<Purchase, 'id' | 'currency' | 'paymentStatus' | 'balance' | 'payments'>) => {

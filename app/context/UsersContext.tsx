@@ -56,7 +56,7 @@ interface UsersContextValue {
 const UsersContext = createContext<UsersContextValue | null>(null);
 
 export function UsersProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -67,6 +67,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
     if (!user) {
       setUsers([]);
       setUsersLoading(false);
@@ -90,7 +91,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
         setUsersLoading(false);
       }
     })();
-  }, [user, refreshUsers]);
+  }, [isBootstrapping, user, refreshUsers]);
 
   const addUser = useCallback(async (input: CreateUserBody): Promise<SystemUser> => {
     return runWithLoader(async () => {

@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import {
   createCustomer as createCustomerApi,
   deleteCustomer as deleteCustomerApi,
@@ -42,6 +43,7 @@ interface CustomersContextValue {
 const CustomersContext = createContext<CustomersContextValue | null>(null);
 
 export function CustomersProvider({ children }: { children: React.ReactNode }) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(true);
@@ -52,6 +54,13 @@ export function CustomersProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setCustomers([]);
+      setCustomersLoading(false);
+      return;
+    }
+
     void (async () => {
       setCustomersLoading(true);
       try {
@@ -62,7 +71,7 @@ export function CustomersProvider({ children }: { children: React.ReactNode }) {
         setCustomersLoading(false);
       }
     })();
-  }, [refreshCustomers]);
+  }, [isBootstrapping, user, refreshCustomers]);
 
   const addCustomer = useCallback(
     async (input: NewCustomerInput) => {

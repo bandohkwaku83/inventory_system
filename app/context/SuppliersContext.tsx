@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import { apiUrl, readApiError } from '../lib/productsApi';
 import {
   mapApiSupplierRow,
@@ -86,6 +87,7 @@ interface SuppliersContextValue {
 const SuppliersContext = createContext<SuppliersContextValue | null>(null);
 
 export function SuppliersProvider({ children }: { children: React.ReactNode }) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [suppliersLoading, setSuppliersLoading] = useState(true);
@@ -127,6 +129,13 @@ export function SuppliersProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setSuppliers([]);
+      setSuppliersLoading(false);
+      return;
+    }
+
     void (async () => {
       setSuppliersLoading(true);
       try {
@@ -137,7 +146,7 @@ export function SuppliersProvider({ children }: { children: React.ReactNode }) {
         setSuppliersLoading(false);
       }
     })();
-  }, [refreshSuppliers, fetchMeta]);
+  }, [isBootstrapping, user, refreshSuppliers, fetchMeta]);
 
   const addSupplier = useCallback(
     async (s: Omit<Supplier, 'id'>) => {

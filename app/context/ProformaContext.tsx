@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { message } from 'antd';
 import { useActionLoader } from '../components/LoaderProvider';
+import { useAuth } from './AuthContext';
 import { apiUrl, readApiError } from '../lib/productsApi';
 import {
   extractProformasArray,
@@ -70,6 +71,7 @@ interface ProformaContextValue {
 const ProformaContext = createContext<ProformaContextValue | null>(null);
 
 export function ProformaProvider({ children }: { children: React.ReactNode }) {
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [proformas, setProformas] = useState<ProformaInvoice[]>([]);
   const [proformasLoading, setProformasLoading] = useState(true);
@@ -98,6 +100,13 @@ export function ProformaProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
+    if (!user) {
+      setProformas([]);
+      setProformasLoading(false);
+      return;
+    }
+
     void (async () => {
       setProformasLoading(true);
       try {
@@ -108,7 +117,7 @@ export function ProformaProvider({ children }: { children: React.ReactNode }) {
         setProformasLoading(false);
       }
     })();
-  }, [refreshProformas]);
+  }, [isBootstrapping, user, refreshProformas]);
 
   const addProforma = useCallback(
     async (input: ProformaCreateInput): Promise<ProformaInvoice> => {

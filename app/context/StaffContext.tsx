@@ -70,7 +70,7 @@ interface StaffContextValue {
 const StaffContext = createContext<StaffContextValue | null>(null);
 
 export function StaffProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isBootstrapping } = useAuth();
   const { runWithLoader } = useActionLoader();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
@@ -115,6 +115,7 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isBootstrapping) return;
     if (!user) {
       setStaff([]);
       setSummary(null);
@@ -149,7 +150,7 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
         setStaffLoading(false);
       }
     })();
-  }, [user, refreshStaff, refreshSummary, messageApi]);
+  }, [isBootstrapping, user, refreshStaff, refreshSummary, messageApi]);
 
   const getStaff = useCallback(
     (id: string) => staff.find((s) => s.id === id),
