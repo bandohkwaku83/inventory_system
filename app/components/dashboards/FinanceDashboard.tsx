@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   Receipt as ReceiptIcon,
   AttachMoney as AttachMoneyIcon,
-  Gavel as GavelIcon,
+  // Gavel as GavelIcon, // Tax paused — re-enable with GRA Reports
   BarChart as BarChartIcon,
   Assessment as AssessmentIcon,
   Description as DescriptionIcon,
@@ -84,7 +84,8 @@ const recentSalesColumns: TableProps<RecentSale>['columns'] = [
 ];
 
 const FINANCE_QUICK_ACTIONS: QuickAction[] = [
-  { key: 'gra', label: 'GRA Reports', icon: GavelIcon, href: '/dashboard/gra-reports' },
+  // Tax paused — re-enable when backend tax is ready
+  // { key: 'gra', label: 'GRA Reports', icon: GavelIcon, href: '/dashboard/gra-reports' },
   { key: 'expenses', label: 'Expenses', icon: AttachMoneyIcon, href: '/dashboard/expenses' },
   { key: 'charts', label: 'Cashflow Charts', icon: BarChartIcon, href: '/dashboard/charts' },
   { key: 'reports', label: 'Sales Reports', icon: AssessmentIcon, href: '/dashboard/reports' },
@@ -144,16 +145,17 @@ export default function FinanceDashboard({
         accent: '#ea580c',
       });
     }
-    if (canAccess('/dashboard/gra-reports')) {
-      cards.push({
-        key: 'gra',
-        label: 'Tax Reporting',
-        value: 'GRA',
-        icon: GavelIcon,
-        href: '/dashboard/gra-reports',
-        accent: '#0284c7',
-      });
-    }
+    // Tax paused — re-enable when backend tax is ready
+    // if (canAccess('/dashboard/gra-reports')) {
+    //   cards.push({
+    //     key: 'gra',
+    //     label: 'Tax Reporting',
+    //     value: 'GRA',
+    //     icon: GavelIcon,
+    //     href: '/dashboard/gra-reports',
+    //     accent: '#0284c7',
+    //   });
+    // }
 
     return cards;
   }, [dashboard, currency, revenueSpark, canAccess]);
@@ -187,11 +189,13 @@ export default function FinanceDashboard({
       <DashboardHeader
         dateLabel={dateLabel}
         greeting={greeting}
-        subtitle="Financial overview — revenue, expenses, and tax compliance"
+        subtitle="Financial overview — revenue and expenses"
         primaryAction={
-          canAccess('/dashboard/gra-reports')
-            ? { label: 'GRA Reports', href: '/dashboard/gra-reports', icon: GavelIcon }
-            : canAccess('/dashboard/charts')
+          // Tax paused — re-enable when backend tax is ready
+          // canAccess('/dashboard/gra-reports')
+          //   ? { label: 'GRA Reports', href: '/dashboard/gra-reports', icon: GavelIcon }
+          //   :
+          canAccess('/dashboard/charts')
               ? { label: 'View Charts', href: '/dashboard/charts', icon: BarChartIcon }
               : undefined
         }

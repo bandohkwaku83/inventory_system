@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -34,6 +35,7 @@ import { useCustomers } from '../../context/CustomersContext';
 import { useStaff } from '../../context/StaffContext';
 import { useSuppliers } from '../../context/SuppliersContext';
 import { BRAND } from '../../lib/brand';
+import { fetchSmsMeta, sendSms, type SmsMeta } from '../../lib/smsApi';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -103,23 +105,66 @@ function formatWhen(iso: string) {
   });
 }
 
+/** Split free-text extras: commas, newlines, or whitespace. */
+function parseExtraPhones(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(/[\s,;]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
 export default function SmsPage() {
   const { customers, customersLoading } = useCustomers();
   const { staff, staffLoading } = useStaff();
   const { suppliers, suppliersLoading } = useSuppliers();
 
-  const [form] = Form.useForm<{ recipientIds: string[]; body: string }>();
+  const [form] = Form.useForm<{
+    recipientIds: string[];
+    extras: string;
+    body: string;
+  }>();
   const [audience, setAudience] = useState<AudienceType>('customers');
   const [sending, setSending] = useState(false);
   const [history, setHistory] = useState<SmsRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<SmsStatus | 'all'>('all');
   const [audienceFilter, setAudienceFilter] = useState<AudienceType | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [smsMeta, setSmsMeta] = useState<SmsMeta | null>(null);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [metaError, setMetaError] = useState<string | null>(null);
 
   const bodyWatch = Form.useWatch('body', form) ?? '';
   const recipientIdsWatch = Form.useWatch('recipientIds', form) ?? [];
+  const extrasWatch = Form.useWatch('extras', form) ?? '';
   const charCount = bodyWatch.length;
   const segmentCount = charCount === 0 ? 0 : Math.ceil(charCount / 160);
+  const extraPhones = useMemo(() => parseExtraPhones(extrasWatch), [extrasWatch]);
+
+  const smsConfigured = smsMeta?.configured === true;
+  const senderId = smsMeta?.senderId || 'Onyx';
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setMetaLoading(true);
+      setMetaError(null);
+      try {
+        const meta = await fetchSmsMeta();
+        if (!cancelled) setSmsMeta(meta);
+      } catch (e) {
+        if (!cancelled) {
+          setSmsMeta(null);
+          setMetaError(e instanceof Error ? e.message : 'Failed to load SMS settings');
+        }
+      } finally {
+        if (!cancelled) setMetaLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const recipientOptions = useMemo((): RecipientOption[] => {
     if (audience === 'customers') {
@@ -148,6 +193,8 @@ export default function SmsPage() {
     () => recipientOptions.filter((r) => recipientIdsWatch.includes(r.id)),
     [recipientOptions, recipientIdsWatch]
   );
+
+  const totalRecipientCount = selectedRecipients.length + extraPhones.length;
 
   const filteredHistory = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -187,35 +234,95 @@ export default function SmsPage() {
   };
 
   const onSend = async () => {
+    if (!smsConfigured) {
+      message.error('SMS not configured');
+      return;
+    }
+
     try {
       const values = await form.validateFields();
       const chosen = recipientOptions.filter((r) => values.recipientIds.includes(r.id));
-      if (chosen.length === 0) {
-        message.warning('Select at least one recipient with a phone number');
+      const extras = parseExtraPhones(values.extras);
+      const phones = [...chosen.map((r) => r.phone), ...extras];
+
+      if (phones.length === 0) {
+        message.warning('Select at least one recipient or enter a phone number');
         return;
       }
 
+      const body = values.body.trim();
       setSending(true);
-      await new Promise((r) => setTimeout(r, 350));
 
+      const result = await sendSms({ message: body, recipients: phones });
       const now = new Date().toISOString();
-      const rows: SmsRecord[] = chosen.map((r, i) => ({
-        id: `sms-${Date.now()}-${i}`,
-        audience,
-        recipientName: r.name,
-        phone: r.phone,
-        body: values.body.trim(),
-        status: 'queued',
-        createdAt: now,
-      }));
+
+      const phoneToName = new Map<string, string>();
+      for (const r of chosen) {
+        phoneToName.set(r.phone, r.name);
+        const digits = r.phone.replace(/\D/g, '');
+        if (digits.startsWith('0') && digits.length === 10) {
+          phoneToName.set(`233${digits.slice(1)}`, r.name);
+        }
+        if (digits.startsWith('233')) {
+          phoneToName.set(`0${digits.slice(3)}`, r.name);
+        }
+      }
+
+      const rows: SmsRecord[] = [];
+      for (const phone of result.recipients) {
+        rows.push({
+          id: `sms-${Date.now()}-${phone}-ok`,
+          audience,
+          recipientName: phoneToName.get(phone) || phone,
+          phone,
+          body,
+          status: 'sent',
+          createdAt: now,
+        });
+      }
+      for (const phone of result.invalid) {
+        rows.push({
+          id: `sms-${Date.now()}-${phone}-bad`,
+          audience,
+          recipientName: phoneToName.get(phone) || phone,
+          phone,
+          body,
+          status: 'failed',
+          createdAt: now,
+        });
+      }
+
+      if (rows.length === 0 && phones.length > 0) {
+        for (let i = 0; i < phones.length; i++) {
+          const phone = phones[i];
+          rows.push({
+            id: `sms-${Date.now()}-${i}`,
+            audience,
+            recipientName: phoneToName.get(phone) || phone,
+            phone,
+            body,
+            status: 'sent',
+            createdAt: now,
+          });
+        }
+      }
 
       setHistory((prev) => [...rows, ...prev]);
-      message.success(
-        `Queued ${rows.length} message${rows.length === 1 ? '' : 's'} to ${AUDIENCE_META[audience].label.toLowerCase()}`
-      );
-      form.setFieldsValue({ recipientIds: [], body: '' });
-    } catch {
-      /* validation */
+
+      const sentCount = result.recipients.length || phones.length - result.invalid.length;
+      if (result.invalid.length > 0) {
+        message.warning(
+          `Sent to ${sentCount} · ${result.invalid.length} invalid number${result.invalid.length === 1 ? '' : 's'}`
+        );
+      } else {
+        message.success(
+          `SMS sent to ${sentCount} recipient${sentCount === 1 ? '' : 's'}`
+        );
+      }
+      form.setFieldsValue({ recipientIds: [], extras: '', body: '' });
+    } catch (e) {
+      if (e && typeof e === 'object' && 'errorFields' in e) return;
+      message.error(e instanceof Error ? e.message : 'Failed to send SMS');
     } finally {
       setSending(false);
     }
@@ -272,6 +379,9 @@ export default function SmsPage() {
     },
   ];
 
+  const sendDisabled =
+    !smsConfigured || metaLoading || totalRecipientCount === 0 || !bodyWatch.trim();
+
   return (
     <DashboardLayout>
       <div className="space-y-5">
@@ -285,6 +395,18 @@ export default function SmsPage() {
             </Text>
           </div>
         </div>
+
+        {metaError && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Could not verify SMS configuration"
+            description={metaError}
+          />
+        )}
+        {!metaLoading && smsMeta && !smsConfigured && (
+          <Alert type="error" showIcon message="SMS not configured" />
+        )}
 
         <Row gutter={[16, 16]}>
           <Col xs={12} sm={6}>
@@ -344,7 +466,7 @@ export default function SmsPage() {
               <Form
                 form={form}
                 layout="vertical"
-                initialValues={{ recipientIds: [], body: '' }}
+                initialValues={{ recipientIds: [], extras: '', body: '' }}
                 onFinish={onSend}
                 requiredMark={false}
               >
@@ -374,7 +496,6 @@ export default function SmsPage() {
                 </div>
                 <Form.Item
                   name="recipientIds"
-                  rules={[{ required: true, message: 'Select at least one recipient' }]}
                   extra={
                     optionsLoading
                       ? `Loading ${AUDIENCE_META[audience].label.toLowerCase()}…`
@@ -389,6 +510,7 @@ export default function SmsPage() {
                     placeholder={`Choose ${AUDIENCE_META[audience].label.toLowerCase()}…`}
                     optionFilterProp="label"
                     maxTagCount="responsive"
+                    disabled={!smsConfigured}
                     options={recipientOptions.map((r) => ({
                       value: r.id,
                       label: `${r.name} · ${r.phone}`,
@@ -416,6 +538,21 @@ export default function SmsPage() {
                 )}
 
                 <Form.Item
+                  label="Extra numbers"
+                  name="extras"
+                  extra="Optional · 0XXXXXXXXX or 233XXXXXXXXX · comma or space separated"
+                >
+                  <Input
+                    placeholder="e.g. 0244123456, 233501234567"
+                    disabled={!smsConfigured}
+                  />
+                </Form.Item>
+
+                <Form.Item label="Sender">
+                  <Input value={metaLoading ? '…' : senderId} disabled readOnly />
+                </Form.Item>
+
+                <Form.Item
                   label="Message"
                   name="body"
                   rules={[
@@ -425,7 +562,9 @@ export default function SmsPage() {
                   extra={
                     <span className="text-slate-500">
                       {charCount} character{charCount === 1 ? '' : 's'}
-                      {charCount > 0 ? ` · ~${segmentCount} SMS segment${segmentCount === 1 ? '' : 's'}` : ''}
+                      {charCount > 0
+                        ? ` · ~${segmentCount} SMS segment${segmentCount === 1 ? '' : 's'}`
+                        : ''}
                     </span>
                   }
                 >
@@ -434,6 +573,7 @@ export default function SmsPage() {
                     placeholder={`Write your message to ${AUDIENCE_META[audience].label.toLowerCase()}…`}
                     maxLength={1000}
                     showCount
+                    disabled={!smsConfigured}
                   />
                 </Form.Item>
 
@@ -445,12 +585,11 @@ export default function SmsPage() {
                   size="large"
                   block
                   style={{ background: BRAND }}
-                  disabled={selectedRecipients.length === 0 || !bodyWatch.trim()}
+                  disabled={sendDisabled}
                 >
-                  Send to {selectedRecipients.length || '…'}{' '}
-                  {selectedRecipients.length === 1
-                    ? AUDIENCE_META[audience].singular.toLowerCase()
-                    : AUDIENCE_META[audience].label.toLowerCase()}
+                  {!smsConfigured && !metaLoading
+                    ? 'SMS not configured'
+                    : `Send to ${totalRecipientCount || '…'} recipient${totalRecipientCount === 1 ? '' : 's'}`}
                 </Button>
               </Form>
             </Card>

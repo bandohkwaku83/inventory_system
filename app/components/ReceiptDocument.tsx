@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
-import { breakdownTaxInclusive, formatGhs } from '../lib/tax';
+// Tax breakdown paused — re-enable when backend tax is ready
+// import { breakdownTaxInclusive, formatGhs } from '../lib/tax';
+import { formatGhs } from '../lib/tax';
 import { useSettings } from '../context/SettingsContext';
 
 export interface ReceiptLineItem {
@@ -48,7 +50,8 @@ export default function ReceiptDocument({
   validUntil,
 }: ReceiptDocumentProps) {
   const { businessInfo, receiptSettings } = useSettings();
-  const tax = breakdownTaxInclusive(subtotal, discount);
+  // Tax breakdown paused — re-enable when backend tax is ready
+  // const tax = breakdownTaxInclusive(subtotal, discount);
   const isProforma = type === 'proforma';
 
   return (
@@ -138,6 +141,11 @@ export default function ReceiptDocument({
 
       <div className="receipt-totals space-y-0.5 border-t border-dashed border-slate-300 pt-1.5 text-[9px]">
         <div className="receipt-row flex justify-between gap-1">
+          <span className="text-slate-500">Subtotal</span>
+          <span>{formatGhs(subtotal)}</span>
+        </div>
+        {/* Tax breakdown paused — re-enable when backend tax is ready
+        <div className="receipt-row flex justify-between gap-1">
           <span className="text-slate-500">Subtotal (excl. tax)</span>
           <span>{formatGhs(tax.taxableValue)}</span>
         </div>
@@ -153,6 +161,7 @@ export default function ReceiptDocument({
           <span className="text-slate-500">VAT (15%)</span>
           <span>{formatGhs(tax.vat)}</span>
         </div>
+        */}
         {discount > 0 && (
           <div className="receipt-row flex justify-between gap-1 text-rose-600">
             <span>Discount</span>

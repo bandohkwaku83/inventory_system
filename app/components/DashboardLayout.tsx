@@ -21,7 +21,7 @@ import {
   AdminPanelSettings as AdminPanelSettingsIcon,
   Logout as LogoutIcon,
   Inventory2 as InventoryIcon,
-  Gavel as GavelIcon,
+  // Gavel as GavelIcon, // Tax paused — re-enable with GRA Reports
   Settings as SettingsIcon,
   Close as CloseIcon,
   LocationOn as LocationOnIcon,
@@ -107,7 +107,8 @@ const menuSections: MenuSection[] = [
     items: [
       // { text: 'Bank', icon: AccountBalanceWalletIcon, path: '/dashboard/bank' },
       { text: 'Expenses', icon: AttachMoneyIcon, path: '/dashboard/expenses' },
-      { text: 'GRA Reports', icon: GavelIcon, path: '/dashboard/gra-reports' },
+      // Tax paused — re-enable when backend tax is ready
+      // { text: 'GRA Reports', icon: GavelIcon, path: '/dashboard/gra-reports' },
     ],
   },
   {

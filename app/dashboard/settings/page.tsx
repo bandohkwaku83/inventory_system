@@ -51,7 +51,8 @@ import {
   type Permission,
   type RoleDefinition,
 } from '../../lib/permissions';
-import { GHANA_TAX_RATES } from '../../lib/tax';
+// Tax & compliance paused — re-enable when backend tax is ready
+// import { GHANA_TAX_RATES } from '../../lib/tax';
 
 const { Text, Title } = Typography;
 
@@ -59,7 +60,7 @@ const BRAND = '#25395c';
 
 type SettingsSection =
   | 'business'
-  | 'tax'
+  // | 'tax' // Tax & compliance paused — re-enable when backend tax is ready
   | 'receipt'
   | 'categories'
   | 'departments'
@@ -77,12 +78,13 @@ const NAV_ITEMS: {
     description: 'Store name, contact & logo',
     icon: BusinessIcon,
   },
-  {
-    id: 'tax',
-    label: 'Tax & compliance',
-    description: 'TIN and Ghana tax rates',
-    icon: GavelIcon,
-  },
+  // Tax & compliance paused — re-enable when backend tax is ready
+  // {
+  //   id: 'tax',
+  //   label: 'Tax & compliance',
+  //   description: 'TIN and Ghana tax rates',
+  //   icon: GavelIcon,
+  // },
   {
     id: 'receipt',
     label: 'Receipt template',
@@ -753,9 +755,7 @@ export default function SettingsPage() {
                       />
                     </FormField>
                   </div>
-                  <p className="mt-4 text-xs text-slate-500">
-                    Tax ID (TIN) is configured under Tax &amp; compliance.
-                  </p>
+                  {/* Tax ID (TIN) is configured under Tax & compliance. */}
                   <div className="mt-8 flex justify-end border-t border-slate-100 pt-6">
                     <button
                       type="button"
@@ -841,6 +841,7 @@ export default function SettingsPage() {
                 </>
               ) : null}
 
+              {/* Tax & compliance paused — re-enable when backend tax is ready
               {activeSection === 'tax' ? (
                 <>
                   <SectionHeader
@@ -904,6 +905,7 @@ export default function SettingsPage() {
                   )}
                 </>
               ) : null}
+              */}
 
               {activeSection === 'categories' ? (
                 <>
