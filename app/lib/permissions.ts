@@ -105,7 +105,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       // { key: 'bank', label: 'Bank', description: 'Bank accounts and transactions' },
       { key: 'expenses', label: 'Expenses', description: 'Track business expenses' },
       { key: 'chart_of_accounts', label: 'Chart of Accounts', description: 'Manage accounting structure' },
-      { key: 'gra_reports', label: 'GRA Reports', description: 'View and export GRA tax reports' },
+      // { key: 'gra_reports', label: 'GRA Reports', description: 'View and export GRA tax reports' },
     ],
   },
   {
@@ -174,7 +174,7 @@ export const PATH_PERMISSIONS: Record<string, PathPermissionRequirement> = {
   // '/dashboard/bank': 'bank',
   '/dashboard/expenses': 'expenses',
   '/dashboard/accounts': 'chart_of_accounts',
-  '/dashboard/gra-reports': 'gra_reports',
+  // '/dashboard/gra-reports': 'gra_reports',
   '/dashboard/payroll': 'payroll',
   '/dashboard/attendance': 'staff_attendance',
   '/dashboard/users': 'users',

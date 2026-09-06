@@ -35,11 +35,21 @@ import { productImageSrc } from '../../lib/productsApi';
 import { useSettings, findCategoryByName } from '../../context/SettingsContext';
 import { parseProductSpreadsheet, downloadProductTemplate } from '../../lib/spreadsheetImport';
 import { normalizeSkuInput, skuFieldRules, SKU_MAX_LENGTH } from '../../lib/sku';
+import { useAuth } from '../../context/AuthContext';
+import { isAdminRole } from '../../lib/permissions';
+import {
+  buildStockSummaryCsv,
+  downloadCsv,
+  formatMoney,
+  summarizeStock,
+} from '../../lib/stockValuation';
 
 const { Title, Text } = Typography;
 
 export default function InventoryPage() {
   const { runWithLoader } = useActionLoader();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && isAdminRole(user.role));
   const {
     products,
     productsLoading,
@@ -77,6 +87,14 @@ export default function InventoryPage() {
     return list;
   }, [products, searchText, statusFilter]);
 
+  const stockSummary = useMemo(() => summarizeStock(products), [products]);
+
+  const handleExportStock = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const csv = buildStockSummaryCsv(products, { includeValues: isAdmin });
+    downloadCsv(`stock-summary-${stamp}.csv`, csv);
+    message.success('Stock summary downloaded');
+  };
   const importRows = async (file: File) => {
     setImporting(true);
     try {
@@ -392,6 +410,15 @@ export default function InventoryPage() {
           <Space size="middle" wrap>
             <Button
               size="large"
+              icon={<DownloadOutlined />}
+              onClick={handleExportStock}
+              disabled={products.length === 0}
+              className="!border-[#25395c] !text-[#25395c] hover:!border-[#1a2842] hover:!text-[#1a2842]"
+            >
+              Download stock
+            </Button>
+            <Button
+              size="large"
               icon={<UploadOutlined />}
               onClick={() => setImportOpen(true)}
               className="!border-[#25395c] !text-[#25395c] hover:!border-[#1a2842] hover:!text-[#1a2842]"
@@ -408,6 +435,53 @@ export default function InventoryPage() {
               Add product / stock item
             </Button>
           </Space>
+        </div>
+
+        <div
+          className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}
+        >
+          <Card size="small" className="shadow-sm" loading={productsLoading}>
+            <Text type="secondary" className="text-xs font-medium uppercase tracking-wide">
+              Products (SKUs)
+            </Text>
+            <p className="mt-1 text-2xl font-bold text-slate-800">
+              {stockSummary.skuCount.toLocaleString('en-US')}
+            </p>
+          </Card>
+          <Card size="small" className="shadow-sm" loading={productsLoading}>
+            <Text type="secondary" className="text-xs font-medium uppercase tracking-wide">
+              Total units in stock
+            </Text>
+            <p className="mt-1 text-2xl font-bold text-slate-800">
+              {stockSummary.totalUnits.toLocaleString('en-US')}
+            </p>
+          </Card>
+          {isAdmin ? (
+            <>
+              <Card size="small" className="shadow-sm" loading={productsLoading}>
+                <Text type="secondary" className="text-xs font-medium uppercase tracking-wide">
+                  Stock value (cost)
+                </Text>
+                <p className="mt-1 text-2xl font-bold text-[#25395c]">
+                  {formatMoney(stockSummary.costValue)}
+                </p>
+                {stockSummary.missingCostCount > 0 ? (
+                  <Text type="warning" className="text-[11px]">
+                    {stockSummary.missingCostCount} SKU
+                    {stockSummary.missingCostCount === 1 ? '' : 's'} missing cost price
+                  </Text>
+                ) : null}
+              </Card>
+              <Card size="small" className="shadow-sm" loading={productsLoading}>
+                <Text type="secondary" className="text-xs font-medium uppercase tracking-wide">
+                  Stock value (retail)
+                </Text>
+                <p className="mt-1 text-2xl font-bold text-slate-800">
+                  {formatMoney(stockSummary.retailValue)}
+                </p>
+              </Card>
+            </>
+          ) : null}
         </div>
 
         <Card className="shadow-sm" loading={productsLoading} styles={{ body: { padding: 0 } }}>

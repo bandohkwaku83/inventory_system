@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Table } from 'antd';
+import { Button, Table, message } from 'antd';
 import type { TableProps } from 'antd';
 import Link from 'next/link';
 import {
@@ -10,7 +10,6 @@ import {
   LocalShipping as LocalShippingIcon,
   PointOfSale as PointOfSaleIcon,
   AttachMoney as AttachMoneyIcon,
-  PeopleAlt as PeopleAltIcon,
   Assessment as AssessmentIcon,
   Add as AddIcon,
   Description as DescriptionIcon,
@@ -19,6 +18,7 @@ import {
   LocationOn as LocationOnIcon,
   FactCheck as FactCheckIcon,
 } from '@mui/icons-material';
+import { DownloadOutlined } from '@ant-design/icons';
 import {
   BarChart,
   Bar,
@@ -53,6 +53,13 @@ import {
   BUSINESS_LOCATIONS,
   formatEnterpriseCurrency,
 } from '../../lib/enterpriseDummyData';
+import { useProducts } from '../../context/ProductsContext';
+import {
+  buildStockSummaryCsv,
+  downloadCsv,
+  formatMoney,
+  summarizeStock,
+} from '../../lib/stockValuation';
 
 interface RecentSale {
   id: string;
@@ -156,17 +163,26 @@ export default function AdminDashboard({
   canAccess: (path: string) => boolean;
 }) {
   const { greeting, dateLabel } = useGreeting();
+  const { products } = useProducts();
   const [locationId, setLocationId] = useState('all');
   const currency = dashboard?.currency ?? 'GHS';
   const revenueSpark =
     dashboard?.salesPerformance.series.map((p) => p.revenue) ?? [0, 0, 0, 0, 0, 0, 0];
+  const stockSummary = useMemo(() => summarizeStock(products), [products]);
+
+  const handleDownloadStock = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(
+      `stock-summary-${stamp}.csv`,
+      buildStockSummaryCsv(products, { includeValues: true, currency })
+    );
+    message.success('Stock summary downloaded');
+  };
 
   const stats: StatCard[] = useMemo(() => {
     const m = dashboard?.metrics;
     const todaysDelta = formatChangePercent(m?.todaysSales.changePercent ?? 0);
     const revenueDelta = formatChangePercent(m?.revenue7d.changePercent ?? 0);
-    const inventoryDelta = formatChangePercent(m?.inventoryItems.changePercent ?? 0);
-    const customersDelta = formatChangePercent(m?.activeCustomers.changePercent ?? 0);
 
     return [
       {
@@ -190,27 +206,23 @@ export default function AdminDashboard({
         spark: revenueSpark.length ? revenueSpark : [0],
       },
       {
-        key: 'inventory',
-        label: 'Inventory Items',
-        value: (m?.inventoryItems.value ?? 0).toLocaleString('en-US'),
-        delta: inventoryDelta,
+        key: 'stock-units',
+        label: 'Total stock (units)',
+        value: stockSummary.totalUnits.toLocaleString('en-US'),
         icon: InventoryIcon,
         href: '/dashboard/inventory',
         accent: '#ea580c',
-        spark: revenueSpark.length ? revenueSpark : [0],
       },
       {
-        key: 'customers',
-        label: 'Active Customers',
-        value: (m?.activeCustomers.value ?? 0).toLocaleString('en-US'),
-        delta: customersDelta,
-        icon: PeopleAltIcon,
-        href: '/dashboard/reports',
-        accent: '#0284c7',
-        spark: revenueSpark.length ? revenueSpark : [0],
+        key: 'stock-value',
+        label: 'Stock value (cost)',
+        value: formatMoney(stockSummary.costValue, currency),
+        icon: AttachMoneyIcon,
+        href: '/dashboard/inventory',
+        accent: '#059669',
       },
     ].filter((s) => canAccess(s.href));
-  }, [dashboard, currency, revenueSpark, canAccess]);
+  }, [dashboard, currency, revenueSpark, canAccess, stockSummary]);
 
   const dailySalesData = useMemo(
     () =>
@@ -287,6 +299,54 @@ export default function AdminDashboard({
         }
       />
       {stats.length > 0 ? <StatCardsGrid stats={stats} /> : null}
+      {canAccess('/dashboard/inventory') ? (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Stock valuation</h2>
+              <p className="text-xs text-slate-500">
+                Admin summary across all products · {stockSummary.skuCount.toLocaleString('en-US')}{' '}
+                SKUs
+              </p>
+            </div>
+            <Button icon={<DownloadOutlined />} onClick={handleDownloadStock}>
+              Download CSV
+            </Button>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Units in stock
+              </p>
+              <p className="mt-1 text-xl font-bold text-slate-800">
+                {stockSummary.totalUnits.toLocaleString('en-US')}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Cost value
+              </p>
+              <p className="mt-1 text-xl font-bold" style={{ color: BRAND }}>
+                {formatMoney(stockSummary.costValue, currency)}
+              </p>
+              {stockSummary.missingCostCount > 0 ? (
+                <p className="mt-0.5 text-[11px] text-amber-600">
+                  {stockSummary.missingCostCount} SKU
+                  {stockSummary.missingCostCount === 1 ? '' : 's'} missing cost
+                </p>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Retail value
+              </p>
+              <p className="mt-1 text-xl font-bold text-slate-800">
+                {formatMoney(stockSummary.retailValue, currency)}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
       <QuickActionsSection actions={quickActions} />
       {(canAccess('/dashboard/reports') || canAccess('/dashboard/charts')) && (
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">

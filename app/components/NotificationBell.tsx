@@ -11,6 +11,9 @@ import {
   Info as SystemIcon,
 } from '@mui/icons-material';
 import { NOTIFICATIONS, relativeTime, type AppNotification } from '../lib/enterpriseDummyData';
+import { useSaleAlerts } from '../hooks/useSaleAlerts';
+import { useAuth } from '../context/AuthContext';
+import { isAdminRole } from '../lib/permissions';
 
 const TYPE_ICONS: Record<AppNotification['type'], React.ElementType> = {
   low_stock: StockIcon,
@@ -27,11 +30,18 @@ const PRIORITY_DOT: Record<AppNotification['priority'], string> = {
 };
 
 export default function NotificationBell() {
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && isAdminRole(user.role));
+  const saleAlerts = useSaleAlerts();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+  const [dummyNotifications, setDummyNotifications] = useState(NOTIFICATIONS);
   const ref = useRef<HTMLDivElement>(null);
 
-  const unread = notifications.filter((n) => !n.read).length;
+  const notifications = isAdmin ? saleAlerts.notifications : dummyNotifications;
+  const unread = isAdmin
+    ? saleAlerts.unread
+    : dummyNotifications.filter((n) => !n.read).length;
+  const formatTime = isAdmin ? saleAlerts.relativeTime : relativeTime;
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -42,11 +52,19 @@ export default function NotificationBell() {
   }, [open]);
 
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (isAdmin) {
+      saleAlerts.markAllRead();
+      return;
+    }
+    setDummyNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const markRead = (id: string) => {
-    setNotifications((prev) =>
+    if (isAdmin) {
+      saleAlerts.markRead(id);
+      return;
+    }
+    setDummyNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
   };
@@ -71,9 +89,14 @@ export default function NotificationBell() {
         <div className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,360px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-fade-in-down">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
-              <p className="text-sm font-bold text-slate-800">Notifications</p>
+              <p className="text-sm font-bold text-slate-800">
+                {isAdmin ? 'Sale alerts' : 'Notifications'}
+              </p>
               {unread > 0 && (
                 <p className="text-[11px] text-slate-500">{unread} unread</p>
+              )}
+              {isAdmin && (
+                <p className="text-[10px] text-slate-400">Live sales · refreshes ~20s</p>
               )}
             </div>
             {unread > 0 && (
@@ -87,51 +110,61 @@ export default function NotificationBell() {
             )}
           </div>
           <ul className="max-h-[360px] overflow-y-auto">
-            {notifications.map((n) => {
-              const Icon = TYPE_ICONS[n.type];
-              const content = (
-                <div
-                  className={`flex gap-3 px-4 py-3 transition-colors hover:bg-slate-50 ${
-                    !n.read ? 'bg-sky-50/40' : ''
-                  }`}
-                >
-                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#25395c]/8 text-[#25395c]">
-                    <Icon className="!text-[1rem]" />
-                    {!n.read && (
-                      <span
-                        className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${PRIORITY_DOT[n.priority]}`}
-                      />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold text-slate-800">{n.title}</p>
-                    <p className="mt-0.5 text-xs leading-snug text-slate-500">{n.message}</p>
-                    <p className="mt-1 text-[10px] font-medium text-slate-400">
-                      {relativeTime(n.createdAt)}
-                    </p>
+            {notifications.length === 0 ? (
+              <li className="px-4 py-8 text-center text-xs text-slate-400">
+                {isAdmin ? 'No recent sales yet' : 'No notifications'}
+              </li>
+            ) : (
+              notifications.map((n) => {
+                const Icon = TYPE_ICONS[n.type];
+                const content = (
+                  <div
+                    className={`flex gap-3 px-4 py-3 transition-colors hover:bg-slate-50 ${
+                      !n.read ? 'bg-sky-50/40' : ''
+                    }`}
+                  >
+                    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#25395c]/8 text-[#25395c]">
+                      <Icon className="!text-[1rem]" />
+                      {!n.read && (
+                        <span
+                          className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${PRIORITY_DOT[n.priority]}`}
+                        />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold text-slate-800">{n.title}</p>
+                      <p className="mt-0.5 text-xs leading-snug text-slate-500">{n.message}</p>
+                      <p className="mt-1 text-[10px] font-medium text-slate-400">
+                        {formatTime(n.createdAt)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              );
-              return (
-                <li key={n.id} className="border-b border-slate-50 last:border-0">
-                  {n.href ? (
-                    <Link
-                      href={n.href}
-                      onClick={() => {
-                        markRead(n.id);
-                        setOpen(false);
-                      }}
-                    >
-                      {content}
-                    </Link>
-                  ) : (
-                    <button type="button" className="w-full text-left" onClick={() => markRead(n.id)}>
-                      {content}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
+                );
+                return (
+                  <li key={n.id} className="border-b border-slate-50 last:border-0">
+                    {n.href ? (
+                      <Link
+                        href={n.href}
+                        onClick={() => {
+                          markRead(n.id);
+                          setOpen(false);
+                        }}
+                      >
+                        {content}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => markRead(n.id)}
+                      >
+                        {content}
+                      </button>
+                    )}
+                  </li>
+                );
+              })
+            )}
           </ul>
         </div>
       )}
