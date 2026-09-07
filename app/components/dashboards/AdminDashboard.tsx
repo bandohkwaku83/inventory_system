@@ -195,16 +195,16 @@ export default function AdminDashboard({
         accent: BRAND,
         spark: revenueSpark.length ? revenueSpark : [0],
       },
-      {
-        key: 'revenue-week',
-        label: 'Revenue (7d)',
-        value: formatDashboardCurrency(m?.revenue7d.value ?? 0, currency),
-        delta: revenueDelta,
-        icon: WalletIcon,
-        href: '/dashboard/reports',
-        accent: '#7c3aed',
-        spark: revenueSpark.length ? revenueSpark : [0],
-      },
+      // {
+      //   key: 'revenue-week',
+      //   label: 'Revenue (7d)',
+      //   value: formatDashboardCurrency(m?.revenue7d.value ?? 0, currency),
+      //   delta: revenueDelta,
+      //   icon: WalletIcon,
+      //   href: '/dashboard/reports',
+      //   accent: '#7c3aed',
+      //   spark: revenueSpark.length ? revenueSpark : [0],
+      // },
       {
         key: 'stock-units',
         label: 'Total stock (units)',
@@ -213,14 +213,14 @@ export default function AdminDashboard({
         href: '/dashboard/inventory',
         accent: '#ea580c',
       },
-      {
-        key: 'stock-value',
-        label: 'Stock value (cost)',
-        value: formatMoney(stockSummary.costValue, currency),
-        icon: AttachMoneyIcon,
-        href: '/dashboard/inventory',
-        accent: '#059669',
-      },
+      // {
+      //   key: 'stock-value',
+      //   label: 'Stock value (cost)',
+      //   value: formatMoney(stockSummary.costValue, currency),
+      //   icon: AttachMoneyIcon,
+      //   href: '/dashboard/inventory',
+      //   accent: '#059669',
+      // },
     ].filter((s) => canAccess(s.href));
   }, [dashboard, currency, revenueSpark, canAccess, stockSummary]);
 
